@@ -241,6 +241,11 @@ struct Driver {
     our_sit: bool,
     /// Said once: the run goes on without the wall guard.
     no_tof_logged: bool,
+    /// The policy is off because this driver cut it, and must be given back on the way out —
+    /// left off, robotd holds the home pose into the floor with torque on.
+    policy_cut: bool,
+    /// The last odometry read, to see a `robotd` restart zero it.
+    last_xy: Option<(f64, f64)>,
     /// Set while parking, so the waits that parking needs are not cut short by the signal that
     /// asked for it.
     parking: bool,
@@ -438,6 +443,11 @@ impl Driver {
     // ── the steps ──
 
     fn run_forever(&mut self) -> Drive {
+        if self.policy() == "sit" {
+            // Found seated at the start: that seat is someone's before this run, not robotd's
+            // battery shutdown, and standing it up is the first thing to do.
+            self.our_sit = true;
+        }
         self.ensure_driving()?;
         let deadline = Instant::now() + Duration::from_secs(5);
         let (x, y) = loop {
@@ -494,9 +504,10 @@ impl Driver {
         while self.now() < end {
             self.check_battery()?;
             if self.caught_falling()? {
-                return Ok(());
+                return self.hold_until(end);
             }
             let pose = self.pose();
+            self.follow_odometry(pose);
             let walking_forward = match guard {
                 Guard::Off => vx > 0.0,
                 Guard::Square => true,
@@ -564,10 +575,7 @@ impl Driver {
         self.caught_falling()?;
         let way = if vx >= 0.0 { "forward" } else { "backward" };
         self.run.event("fall_triggered", way);
-        self.enable(false)?;
-        self.wait(self.args.cut)?;
-        self.check_battery()?;
-        self.enable(true)?;
+        self.cut_policy(self.args.cut)?;
         self.get_up(Getup::provoked(self.timing))?;
         self.schedule.unanchor();
         Ok(())
@@ -610,10 +618,8 @@ impl Driver {
                     let down = self.timing.timeout;
                     self.run
                         .event("getup_failed", &format!("still down after {down:.0} s"));
-                    self.enable(false)?;
-                    self.wait(self.args.reset)?;
                     self.check_battery_level()?;
-                    self.enable(true)?;
+                    self.cut_policy(self.args.reset)?;
                     g.resumed(self.now() - t0);
                     self.run.event(
                         "long_reset",
@@ -647,10 +653,11 @@ impl Driver {
         let end = self.schedule.deadline(step.seconds, self.now());
         self.check_battery()?;
         if self.caught_falling()? {
-            return Ok(());
+            return self.hold_until(end);
         }
         self.sit_toggle("sit_refused")?;
         self.our_sit = true;
+
         // Seated: nothing to send. The seat is latched, and a twist would not move a sitting
         // duck. Checked every tenth of a second, so a shutdown that starts while seated is seen.
         while self.now() < end {
@@ -672,16 +679,61 @@ impl Driver {
         while self.now() < end {
             self.check_battery()?;
             if self.caught_falling()? {
-                return Ok(());
+                return self.hold_until(end);
             }
             self.tick(0.0, 0.0)?;
         }
         Ok(())
     }
 
+    /// The rest of an abandoned step's slot, standing still, so the next step starts when the
+    /// lap says. A get-up that ran past the slot leaves nothing to wait.
+    fn hold_until(&mut self, end: f64) -> Drive {
+        while self.now() < end {
+            self.check_battery()?;
+            self.tick(0.0, 0.0)?;
+        }
+        Ok(())
+    }
+
+    /// A `robotd` restart zeroes odometry. Move the start with it, so the square stays where it
+    /// was on the floor rather than sending the robot off to where the old origin now reads.
+    fn follow_odometry(&mut self, pose: Option<(f64, f64, f64)>) {
+        let Some((x, y, _)) = pose else {
+            return;
+        };
+        if let Some(before) = self.last_xy
+            && guard::odometry_jumped(before, (x, y))
+        {
+            let (dx, dy) = (x - before.0, y - before.1);
+            self.home = (self.home.0 + dx, self.home.1 + dy);
+            self.run.shared.lock().expect("shared lock").home = Some(self.home);
+            self.run.event(
+                "odometry_jump",
+                &format!("moved ({dx:.2}, {dy:.2}) m between reads; start moved with it"),
+            );
+        }
+        self.last_xy = Some((x, y));
+    }
+
+    /// The policy off for `seconds` and back. Not cut short by a stop or the battery: a robot
+    /// left with its policy off is the one state this test must never leave behind.
+    fn cut_policy(&mut self, seconds: f64) -> Drive {
+        self.enable(false)?;
+        self.policy_cut = true;
+        std::thread::sleep(Duration::from_secs_f64(seconds.max(0.0)));
+        self.enable(true)?;
+        self.policy_cut = false;
+        Ok(())
+    }
+
     /// On the way out: stop, and leave the robot standing (rise if this driver sat it).
     fn park(&mut self) {
         self.parking = true;
+        if self.policy_cut {
+            let _ = self.enable(true);
+            self.policy_cut = false;
+        }
         if self.policy() == "sit" && self.our_sit {
             let _ = self.rise(None);
         }
@@ -733,6 +785,8 @@ fn foreground(robot_socket: &Path, tof_socket: &Path, args: StressArgs) -> Resul
         home: (0.0, 0.0),
         our_sit: false,
         no_tof_logged: false,
+        policy_cut: false,
+        last_xy: None,
         parking: false,
     };
     match driver.run_forever() {

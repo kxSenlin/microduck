@@ -40,6 +40,15 @@ pub fn outside_square(pose: (f64, f64), home: (f64, f64), half: f64) -> bool {
     (pose.0 - home.0).abs() > half || (pose.1 - home.1).abs() > half
 }
 
+/// Odometry moving further than this between two reads is not the robot walking: it is
+/// `robotd` restarting and integrating from zero again.
+const ODOMETRY_JUMP: f64 = 0.5;
+
+/// Whether odometry went from `before` to `after` in a way no walk could, between two reads.
+pub fn odometry_jumped(before: (f64, f64), after: (f64, f64)) -> bool {
+    (after.0 - before.0).hypot(after.1 - before.1) > ODOMETRY_JUMP
+}
+
 fn wrap(angle: f64) -> f64 {
     angle.sin().atan2(angle.cos())
 }
@@ -124,5 +133,13 @@ mod tests {
         let (vx, vyaw) = toward((0.0, 0.0, 0.0), (1.0, 0.1), 0.3, 1.5, 0.6);
         assert_eq!(vx, 0.3);
         assert!(vyaw > 0.0 && vyaw < 1.5);
+    }
+
+    #[test]
+    fn a_jump_no_walk_could_make_is_an_odometry_reset() {
+        // 50 ms apart at full stick is under 2 cm; a restarted robotd starts again from zero.
+        assert!(!odometry_jumped((1.00, 0.50), (1.02, 0.50)));
+        assert!(odometry_jumped((5.0, 3.0), (0.0, 0.0)));
+        assert!(odometry_jumped((0.0, 0.0), (0.0, 0.6)));
     }
 }
