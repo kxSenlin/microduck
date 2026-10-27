@@ -5,7 +5,7 @@ all 15 motors, including the mouth. It bypasses policies, pickup/fall reactions 
 clamps for that session. Native servo limits/shutdown are unchanged. Normal robot configuration
 is not changed. [The design](../design/diagnostics-design.md) owns lifecycle and failure semantics.
 
-Requires a complete daemon release with API 45; installing robotctl alone does not add robotd
+Requires a complete daemon release with API 47; installing robotctl alone does not add robotd
 routes. The shipped robotd unit grants the local `microduck` account maintenance access via
 `--maintenance-user microduck`; root and the daemon owner are also permitted. Other named users
 can be granted explicitly by the service administrator. BLE/WebRTC relay accounts cannot acquire

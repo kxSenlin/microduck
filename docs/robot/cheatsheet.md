@@ -518,7 +518,11 @@ charge. `mediad` and `tofd` report theirs to `robotd` once a minute (`robot.vetb
 `n` on the page writes a dated line in the diary — "reglued the beak", "new feet" — and Enter
 saves it on the robot.
 
-**`s` shares it.** On a robot signed in to Hugging Face (`robotctl account login`), `updaterd`
+**`s` shares it.** It first asks whether to list the duck in the **gallery**, the Space's front page
+(<https://pollen-robotics-microduck-vetbook.hf.space>), where anybody can search ducks by name, sort
+and filter them by their stats, and follow one to its owner's Hugging Face profile: `y` lists it,
+`n` shares without listing, Esc cancels. Each share asks again, and an unlisted share takes a listed
+duck back out. On a robot signed in to Hugging Face (`robotctl account login`), `updaterd`
 publishes the book to a **public** dataset on that account, `<user>/<robot name>-vetbook`, and the
 page shows a link to its card on the `microduck-vetbook` Space, with a QR code to open it on a
 phone. The card is one of eight designs, drawn at random each share, in a palette the duck's name
