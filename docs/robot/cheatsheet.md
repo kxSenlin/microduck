@@ -628,6 +628,8 @@ Still down 7 s after the policy came back (`--getup-timeout`), the policy is cut
 It stays within ±0.5 m of where it started on odometry (`--square`; coarse, since falls drift it)
 and turns away from anything closer than 20 cm ahead on the head ToF (`--wall`); a duck without
 the ToF logs `no_tof` once and runs on odometry alone. Run it in a pen, with no pad connected.
+Unlike `endurance`, `stop` (or ctrl-C in `--foreground`) turns the policy off, as the pad's Start
+does: the robot holds its home pose.
 
 Same background unit, battery hand-off and files as `endurance`, under `/var/lib/stress/` —
 `samples.csv` gains `lap` and `step`, and `events.csv` carries `lap_start`, `fall_triggered`,

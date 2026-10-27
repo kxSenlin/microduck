@@ -38,6 +38,7 @@ const UNIT: Unit = Unit {
     runs_dir: "/var/lib/endurance",
     command: "endurance",
     description: "robotctl endurance: battery and heat test",
+    stopped: "the robot is left standing",
 };
 
 /// `robotd`'s deadman zeroes the twist 500 ms after the last intent; 20 Hz is well inside it.

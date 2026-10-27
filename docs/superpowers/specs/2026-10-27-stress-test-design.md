@@ -162,8 +162,9 @@ Same run directory shape as `endurance` (`meta.json`, `samples.csv`, `events.csv
 ## Running it
 
 `sudo robotctl stress` (background), `robotctl stress status`, `sudo robotctl stress stop`;
-`--foreground` and `--out` as in `endurance`; `--getup-timeout` (7 s). Running out of battery ends
-it as `endurance` does. Documented in `docs/robot/cheatsheet.md`.
+`--foreground` and `--out` as in `endurance`; `--getup-timeout` (7 s). A stop (`stop`, or ctrl-C in
+`--foreground`) turns the policy off, as the pad's Start does: the robot holds its home pose rather
+than balancing on. Running out of battery ends it as `endurance` does. Documented in `docs/robot/cheatsheet.md`.
 
 ## Left to the builder
 

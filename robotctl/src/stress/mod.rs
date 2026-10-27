@@ -44,6 +44,7 @@ const UNIT: Unit = Unit {
     runs_dir: "/var/lib/stress",
     command: "stress",
     description: "robotctl stress: falls and get-ups until the battery is empty",
+    stopped: "the policy is off, the robot holding its home pose",
 };
 
 /// `robotd`'s deadman zeroes the twist 500 ms after the last intent; 20 Hz is well inside it.
@@ -64,7 +65,7 @@ const DRIVING: [&str; 2] = ["walk", "stand"];
 pub enum StressCommand {
     /// Whether a run is going, its lap and step, and its latest sample and events.
     Status,
-    /// Stop the background run. The robot is stopped and left standing.
+    /// Stop the background run. The policy goes off, as with the pad's Start.
     Stop,
 }
 
@@ -241,14 +242,8 @@ struct Driver {
     our_sit: bool,
     /// Said once: the run goes on without the wall guard.
     no_tof_logged: bool,
-    /// The policy is off because this driver cut it, and must be given back on the way out —
-    /// left off, robotd holds the home pose into the floor with torque on.
-    policy_cut: bool,
     /// The last odometry read, to see a `robotd` restart zero it.
     last_xy: Option<(f64, f64)>,
-    /// Set while parking, so the waits that parking needs are not cut short by the signal that
-    /// asked for it.
-    parking: bool,
 }
 
 impl Driver {
@@ -330,7 +325,7 @@ impl Driver {
     fn wait(&self, seconds: f64) -> Drive {
         let end = Instant::now() + Duration::from_secs_f64(seconds.max(0.0));
         loop {
-            if signalled() && !self.parking {
+            if signalled() {
                 return Err(Halt::Stop);
             }
             let left = end.saturating_duration_since(Instant::now());
@@ -716,28 +711,19 @@ impl Driver {
         self.last_xy = Some((x, y));
     }
 
-    /// The policy off for `seconds` and back. Not cut short by a stop or the battery: a robot
-    /// left with its policy off is the one state this test must never leave behind.
+    /// The policy off for `seconds` and back. A stop in the middle leaves it off, which is
+    /// where [`Self::park`] puts it anyway.
     fn cut_policy(&mut self, seconds: f64) -> Drive {
         self.enable(false)?;
-        self.policy_cut = true;
-        std::thread::sleep(Duration::from_secs_f64(seconds.max(0.0)));
-        self.enable(true)?;
-        self.policy_cut = false;
-        Ok(())
+        self.wait(seconds)?;
+        self.enable(true)
     }
 
-    /// On the way out: stop, and leave the robot standing (rise if this driver sat it).
+    /// On the way out: stop, and the policy off — the pad's Start, holding the home pose. No
+    /// waits: with robotd gone, a stop must not hang reconnecting.
     fn park(&mut self) {
-        self.parking = true;
-        if self.policy_cut {
-            let _ = self.enable(true);
-            self.policy_cut = false;
-        }
-        if self.policy() == "sit" && self.our_sit {
-            let _ = self.rise(None);
-        }
         let _ = self.call(&proto::Call::RobotStop);
+        let _ = self.enable(false);
     }
 }
 
@@ -785,9 +771,7 @@ fn foreground(robot_socket: &Path, tof_socket: &Path, args: StressArgs) -> Resul
         home: (0.0, 0.0),
         our_sit: false,
         no_tof_logged: false,
-        policy_cut: false,
         last_xy: None,
-        parking: false,
     };
     match driver.run_forever() {
         Err(Halt::HandsOff(why)) => {
@@ -809,7 +793,7 @@ fn foreground(robot_socket: &Path, tof_socket: &Path, args: StressArgs) -> Resul
         Err(Halt::Stop) | Ok(()) => {
             run.event("signal", signal_name());
             driver.park();
-            run.event("stop", "robot stopped and left standing");
+            run.event("stop", "robot stopped, policy off");
             Ok(())
         }
     }

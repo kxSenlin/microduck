@@ -36,6 +36,8 @@ pub(crate) struct Unit {
     pub(crate) command: &'static str,
     /// The unit's description in `systemctl status`.
     pub(crate) description: &'static str,
+    /// What a stop leaves the robot in, for the person who asked for it.
+    pub(crate) stopped: &'static str,
 }
 
 impl Unit {
@@ -121,7 +123,7 @@ impl Unit {
                 format!("systemctl stop {} failed", self.name),
             ));
         }
-        println!("stopped; the robot is left standing");
+        println!("stopped; {}", self.stopped);
         Ok(())
     }
 
