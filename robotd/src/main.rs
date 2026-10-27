@@ -356,6 +356,7 @@ struct PolicyNames {
     sitstand: Option<String>,
     ground_pick: Option<String>,
     ground_grasp: Option<String>,
+    ground_grasp_2: Option<String>,
     /// The configurable one-shots this robot has, in priority order — the names a client may
     /// ask for, and the answer to "what can this robot do".
     skills: Vec<String>,
@@ -374,6 +375,7 @@ impl PolicyNames {
             sitstand: name(&policy.sitstand),
             ground_pick: name(&policy.ground_pick),
             ground_grasp: name(&policy.ground_grasp),
+            ground_grasp_2: name(&policy.ground_grasp_2),
             skills: policy.skills.iter().map(|s| s.name.clone()).collect(),
         }
     }
@@ -1882,6 +1884,7 @@ fn change_disturbs(
         Driving::Seated => false,
         Driving::GroundPick => before.ground_pick != after.ground_pick,
         Driving::GroundGrasp => before.ground_grasp != after.ground_grasp,
+        Driving::GroundGrasp2 => before.ground_grasp_2 != after.ground_grasp_2,
         Driving::Skill(_) => before.skills != after.skills,
     }
 }
@@ -1959,6 +1962,8 @@ fn try_controller(
             ground_pick_gain_ratio: policy_cfg.ground_pick_gain_ratio,
             ground_grasp_mouth: policy_cfg.ground_grasp_mouth,
             ground_grasp_mouth_close: policy_cfg.ground_grasp_mouth_close,
+            ground_grasp_2_mouth: policy_cfg.ground_grasp_2_mouth,
+            ground_grasp_2_mouth_close: policy_cfg.ground_grasp_2_mouth_close,
             sitstand_rise_s: policy_cfg.sitstand_rise_s,
             sitstand_ramp_s: policy_cfg.sitstand_ramp_s,
             skills: policy_cfg.skills.clone(),
@@ -1969,6 +1974,7 @@ fn try_controller(
             sitstand: policy_cfg.sitstand.clone(),
             ground_pick: policy_cfg.ground_pick.clone(),
             ground_grasp: policy_cfg.ground_grasp.clone(),
+            ground_grasp_2: policy_cfg.ground_grasp_2.clone(),
             // Only the skills whose file resolves — a slot switched off with `"none"` is
             // already filtered out by `resolved_skills`.
             skills: policy_cfg
@@ -1992,6 +1998,7 @@ fn try_controller(
                     sitstand = ?policy_cfg.sitstand.as_ref().map(|p| p.display().to_string()),
                     ground_pick = ?policy_cfg.ground_pick.as_ref().map(|p| p.display().to_string()),
                     ground_grasp = ?policy_cfg.ground_grasp.as_ref().map(|p| p.display().to_string()),
+                    ground_grasp_2 = ?policy_cfg.ground_grasp_2.as_ref().map(|p| p.display().to_string()),
                     kicks = policy_cfg.kick_left.is_some() || policy_cfg.kick_right.is_some(),
                     roulade = ?policy_cfg.roulade.as_ref().map(|p| p.display().to_string()),
                     limp_fall,
@@ -2582,6 +2589,9 @@ async fn control_loop<T: RobotIo>(
                     }
                     if requests.ground_grasp {
                         outcome("ground_grasp", controller.start_ground_grasp());
+                    }
+                    if requests.ground_grasp_2 {
+                        outcome("ground_grasp_2", controller.start_ground_grasp_2());
                     }
                     if requests.sit_toggle {
                         match controller.sit_toggle() {
@@ -4702,18 +4712,24 @@ fn skills_report(state: &RobotState) -> proto::SkillsResult {
                 overridden: overridden.contains(&skill.name),
             })
             .collect(),
-        built_in: ["ground_pick", "ground_grasp", "sit_toggle"]
-            .into_iter()
-            .filter(|name| {
-                names.skills.iter().all(|s| s != name)
-                    && match *name {
-                        "ground_pick" => names.ground_pick.is_some(),
-                        "ground_grasp" => names.ground_grasp.is_some(),
-                        _ => names.sitstand.is_some(),
-                    }
-            })
-            .map(str::to_owned)
-            .collect(),
+        built_in: [
+            "ground_pick",
+            "ground_grasp",
+            "ground_grasp_2",
+            "sit_toggle",
+        ]
+        .into_iter()
+        .filter(|name| {
+            names.skills.iter().all(|s| s != name)
+                && match *name {
+                    "ground_pick" => names.ground_pick.is_some(),
+                    "ground_grasp" => names.ground_grasp.is_some(),
+                    "ground_grasp_2" => names.ground_grasp_2.is_some(),
+                    _ => names.sitstand.is_some(),
+                }
+        })
+        .map(str::to_owned)
+        .collect(),
     }
 }
 
@@ -5141,6 +5157,9 @@ fn do_names(policies: &PolicyNames, emotions: &emotion::Library) -> Vec<String> 
     if policies.ground_grasp.is_some() {
         names.push("ground_grasp".to_owned());
     }
+    if policies.ground_grasp_2.is_some() {
+        names.push("ground_grasp_2".to_owned());
+    }
     if policies.sitstand.is_some() {
         names.push("sit_toggle".to_owned());
     }
@@ -5158,6 +5177,10 @@ fn queue_skill(state: &RobotState, intents: &Intents, skill: &str) -> bool {
         }
         "ground_grasp" if policies.ground_grasp.is_some() => {
             intents.request_ground_grasp();
+            true
+        }
+        "ground_grasp_2" if policies.ground_grasp_2.is_some() => {
+            intents.request_ground_grasp_2();
             true
         }
         "sit_toggle" if policies.sitstand.is_some() => {
@@ -6080,12 +6103,21 @@ mod tests {
             &PolicyNames {
                 ground_pick: Some("alpha_ground_pick.onnx".to_owned()),
                 ground_grasp: Some("ground_grasp.onnx".to_owned()),
+                ground_grasp_2: Some("ground_grasp_2.onnx".to_owned()),
                 sitstand: Some("alpha_sitstand.onnx".to_owned()),
                 ..Default::default()
             },
             &emotion::Library::default(),
         );
-        assert_eq!(names, ["ground_pick", "ground_grasp", "sit_toggle"]);
+        assert_eq!(
+            names,
+            [
+                "ground_pick",
+                "ground_grasp",
+                "ground_grasp_2",
+                "sit_toggle"
+            ]
+        );
     }
 
     /// **An unknown skill is refused with the list, before anything is written.**

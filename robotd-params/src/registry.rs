@@ -191,6 +191,11 @@ pub const REGISTRY: &[Entry] = &[
         Kind::OptionalPath,
         "Second pick, with a trained beak (robot.do ground_grasp); unset = none",
     ),
+    entry(
+        "policy.ground_grasp_2",
+        Kind::OptionalPath,
+        "Third pick, another trained grasp (robot.do ground_grasp_2); unset = none",
+    ),
     entry("policy.kick_left", Kind::OptionalPath, "Left-kick policy"),
     entry("policy.kick_right", Kind::OptionalPath, "Right-kick policy"),
     entry("policy.roulade", Kind::OptionalPath, "Forward-roll policy"),
@@ -248,6 +253,16 @@ pub const REGISTRY: &[Entry] = &[
         "policy.ground_grasp_mouth_close",
         Kind::Float,
         "Pick phase at which that beak starts closing",
+    ),
+    entry(
+        "policy.ground_grasp_2_mouth",
+        Kind::Float,
+        "Beak opening the second grasp plays on its phase",
+    ),
+    entry(
+        "policy.ground_grasp_2_mouth_close",
+        Kind::Float,
+        "Pick phase at which the second grasp's beak starts closing",
     ),
     feature(
         "policy.voltage_adapt",

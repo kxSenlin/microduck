@@ -1395,6 +1395,10 @@ pub struct PolicyParams {
     /// hand-back on a network of its own, trained to close the beak on what it reaches — a beak
     /// robotd plays, see `ground_grasp_mouth`. Walking only; unset, the robot has no such skill.
     pub ground_grasp: Option<PathBuf>,
+    /// A second grasp, `robot.do ground_grasp_2`: the same cycle and beak schedule on another
+    /// network, with its own opening and close (`ground_grasp_2_mouth`), so two trained grasps can
+    /// sit on two buttons. Walking only; unset, the robot has no such skill.
+    pub ground_grasp_2: Option<PathBuf>,
     pub kick_left: Option<PathBuf>,
     pub kick_right: Option<PathBuf>,
     /// Episodic forward roll. Ships by default in both modes, as the prototype now does.
@@ -1429,6 +1433,9 @@ pub struct PolicyParams {
     pub ground_grasp_mouth: f64,
     /// The pick phase at which that beak starts closing on what it reached for.
     pub ground_grasp_mouth_close: f64,
+    /// The same two for `ground_grasp_2`.
+    pub ground_grasp_2_mouth: f64,
+    pub ground_grasp_2_mouth_close: f64,
     /// The one-shot skills this robot has, in priority order.
     ///
     /// Empty means the built-in three — kicks and roulade, with the numbers they have always
@@ -1799,7 +1806,12 @@ impl SetManifest {
 /// has its own arm of the control cascade, so a table entry answering to either name is
 /// unreachable: `robot.do` matches the built-in first, and the entry sits in the list being
 /// offered and never run.
-pub const DAEMON_OWNED_SKILLS: [&str; 3] = ["ground_pick", "ground_grasp", "sit_toggle"];
+pub const DAEMON_OWNED_SKILLS: [&str; 4] = [
+    "ground_pick",
+    "ground_grasp",
+    "ground_grasp_2",
+    "sit_toggle",
+];
 
 /// The ground pick hands back at this fraction of its cycle when the set does not say — the
 /// prototype's cutoff. Ending at 100% replays the reach on the way out.
@@ -1986,6 +1998,8 @@ pub struct ResolvedPolicy {
     pub ground_pick: Option<PathBuf>,
     /// The second pick; `None` in roller mode whatever the file says.
     pub ground_grasp: Option<PathBuf>,
+    /// The second grasp; likewise.
+    pub ground_grasp_2: Option<PathBuf>,
     pub kick_left: Option<PathBuf>,
     pub kick_right: Option<PathBuf>,
     pub roulade: Option<PathBuf>,
@@ -2003,6 +2017,8 @@ pub struct ResolvedPolicy {
     /// The beak opening the ground grasp plays, and the phase it starts closing at.
     pub ground_grasp_mouth: f64,
     pub ground_grasp_mouth_close: f64,
+    pub ground_grasp_2_mouth: f64,
+    pub ground_grasp_2_mouth_close: f64,
     /// Seconds the sitstand network rises before the gait takes over.
     pub sitstand_rise_s: f64,
     /// Seconds the seat takes to settle after the flag flips.
@@ -2191,6 +2207,7 @@ impl PolicyParams {
             ground_pick: path(&self.ground_pick, ground_pick),
             // Trained on the walking pick's cycle; the roller's crouch is another move.
             ground_grasp: path(&self.ground_grasp, None).filter(|_| self.mode == Mode::Walk),
+            ground_grasp_2: path(&self.ground_grasp_2, None).filter(|_| self.mode == Mode::Walk),
             kick_left: skill_file("kick_left"),
             kick_right: skill_file("kick_right"),
             roulade: skill_file("roulade"),
@@ -2223,6 +2240,8 @@ impl PolicyParams {
             ground_pick_gain_ratio: self.ground_pick_gain_ratio,
             ground_grasp_mouth: self.ground_grasp_mouth,
             ground_grasp_mouth_close: self.ground_grasp_mouth_close,
+            ground_grasp_2_mouth: self.ground_grasp_2_mouth,
+            ground_grasp_2_mouth_close: self.ground_grasp_2_mouth_close,
             sitstand_rise_s: seat.map_or(DEFAULT_SITSTAND_RISE_S, |t| t.rise_s),
             sitstand_ramp_s: seat.map_or(DEFAULT_SITSTAND_RAMP_S, |t| t.ramp_s),
             skills,
@@ -2299,6 +2318,7 @@ impl Default for PolicyParams {
             sitstand: None,
             ground_pick: None,
             ground_grasp: None,
+            ground_grasp_2: None,
             kick_left: None,
             kick_right: None,
             roulade: None,
@@ -2316,6 +2336,8 @@ impl Default for PolicyParams {
             // `ground-grasp`): open to 26°, closing from 30% of the cycle.
             ground_grasp_mouth: 0.88,
             ground_grasp_mouth_close: 0.30,
+            ground_grasp_2_mouth: 0.88,
+            ground_grasp_2_mouth_close: 0.30,
             skills: Vec::new(),
             voltage_adapt: true,
             nominal_voltage: 7.4,
@@ -3664,6 +3686,36 @@ mod tests {
             ..set
         };
         assert_eq!(roller.resolved().ground_grasp, None);
+    }
+
+    /// The second grasp is a slot of its own: its path and beak keys are read beside the first
+    /// one's without touching them, and roller mode drops it too.
+    #[test]
+    fn the_second_ground_grasp_has_its_own_keys() {
+        let dir = tempfile::tempdir().unwrap();
+        let body = "[policy]\nground_grasp = \"/p/a.onnx\"\nground_grasp_2 = \"/p/b.onnx\"\n\
+                    ground_grasp_2_mouth = 0.775\nground_grasp_2_mouth_close = 0.34\n";
+        let set = Params::load(&write(dir.path(), body), true).unwrap().policy;
+        let resolved = set.resolved();
+        assert_eq!(
+            resolved.ground_grasp.as_deref(),
+            Some(std::path::Path::new("/p/a.onnx"))
+        );
+        assert_eq!(
+            resolved.ground_grasp_2.as_deref(),
+            Some(std::path::Path::new("/p/b.onnx"))
+        );
+        assert_eq!(
+            resolved.ground_grasp_mouth, 0.88,
+            "the first keeps its default"
+        );
+        assert_eq!(resolved.ground_grasp_2_mouth, 0.775);
+        assert_eq!(resolved.ground_grasp_2_mouth_close, 0.34);
+        let roller = PolicyParams {
+            mode: Mode::Roller,
+            ..set
+        };
+        assert_eq!(roller.resolved().ground_grasp_2, None);
     }
 
     /// The capture device is derived from the playback one, and the derivation must be

@@ -192,6 +192,10 @@ mode = "walk"
 # ground_grasp = "/var/lib/robot/policies/ground_grasp.onnx"
 # ground_grasp_mouth = 0.88
 # ground_grasp_mouth_close = 0.30
+# A second grasp on its own network and beak, `robot.do ground_grasp_2`, keyed the same way.
+# ground_grasp_2 = "/var/lib/robot/policies/ground_grasp_2.onnx"
+# ground_grasp_2_mouth = 0.88
+# ground_grasp_2_mouth_close = 0.30
 
 # How long a kick window stays on the kick network, seconds.
 # kick_duration = 0.5

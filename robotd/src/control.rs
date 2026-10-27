@@ -105,6 +105,9 @@ pub struct SkillTuning {
     pub ground_grasp_mouth: f64,
     /// The pick phase at which that beak starts closing.
     pub ground_grasp_mouth_close: f64,
+    /// The same two for the second grasp.
+    pub ground_grasp_2_mouth: f64,
+    pub ground_grasp_2_mouth_close: f64,
     /// How long the sitstand network rises (posture flag 0) before the main policy takes over.
     /// 1 s is enough on the robot — velstand owns the tail of the rise fine.
     pub sitstand_rise_s: f64,
@@ -126,6 +129,8 @@ impl Default for SkillTuning {
             ground_pick_gain_ratio: 1.0,
             ground_grasp_mouth: 0.88,
             ground_grasp_mouth_close: 0.30,
+            ground_grasp_2_mouth: 0.88,
+            ground_grasp_2_mouth_close: 0.30,
             sitstand_rise_s: robotd_params::DEFAULT_SITSTAND_RISE_S,
             sitstand_ramp_s: robotd_params::DEFAULT_SITSTAND_RAMP_S,
             skills: Vec::new(),
@@ -136,13 +141,21 @@ impl Default for SkillTuning {
 /// The grasp's beak at `phase`: closed, opening, held open, closing, closed — the training
 /// env's `mouth_schedule_fraction` times the configured opening. Closed is `mouth_target(0.0)`,
 /// −5°, past where the pads meet: it squeezes what it holds, as in training.
-fn grasp_mouth(skills: &SkillTuning, phase: f64) -> f64 {
+fn grasp_mouth(mouth: f64, close: f64, phase: f64) -> f64 {
     let opening = ((phase - GRASP_MOUTH_OPEN_START)
         / (GRASP_MOUTH_OPEN_END - GRASP_MOUTH_OPEN_START))
         .clamp(0.0, 1.0);
-    let closing =
-        ((phase - skills.ground_grasp_mouth_close) / GRASP_MOUTH_CLOSE_LEN).clamp(0.0, 1.0);
-    skills.ground_grasp_mouth * opening * (1.0 - closing)
+    let closing = ((phase - close) / GRASP_MOUTH_CLOSE_LEN).clamp(0.0, 1.0);
+    mouth * opening * (1.0 - closing)
+}
+
+/// Which grasp a running pick is: the pick's cycle on that grasp's network, with its beak.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Grasp {
+    /// `ground_grasp`.
+    First,
+    /// `ground_grasp_2`.
+    Second,
 }
 
 /// One tick's worth of decisions, for the caller to act on and report.
@@ -220,6 +233,7 @@ pub enum Driving {
     Seated,
     GroundPick,
     GroundGrasp,
+    GroundGrasp2,
     /// A one-shot skill, by its config name.
     Skill(String),
 }
@@ -233,6 +247,7 @@ impl std::fmt::Display for Driving {
             Driving::Seated => f.write_str("seated"),
             Driving::GroundPick => f.write_str("ground_pick"),
             Driving::GroundGrasp => f.write_str("ground_grasp"),
+            Driving::GroundGrasp2 => f.write_str("ground_grasp_2"),
             Driving::Skill(name) => f.write_str(name),
         }
     }
@@ -251,8 +266,8 @@ pub struct Controller {
     previous: Option<[f64; NUM_JOINTS]>,
     /// Ground-pick phase, 0..`skills.ground_pick_end_phase`. `None` when inactive.
     ground_pick: Option<f64>,
-    /// Whether that pick is the grasp: the same phase on the grasp's network, with its beak.
-    grasping: bool,
+    /// Which grasp that pick is, if one: the same phase on the grasp's network, with its beak.
+    grasp: Option<Grasp>,
     /// **A running skill switches the fall reflex off**, because `busy()` is what gates the
     /// limp-fall predictor and any active skill makes it true. That was uncontroversial when
     /// every one-shot was under a second; a skill configured to hold for ten is a robot with no
@@ -283,7 +298,7 @@ impl Controller {
             last_action: [0.0; ACTION_LEN],
             previous: None,
             ground_pick: None,
-            grasping: false,
+            grasp: None,
             active: None,
             sit: Sit::Up,
             sit_settle: 0.0,
@@ -301,6 +316,7 @@ impl Controller {
             Net::SitStand => Driving::SitStand,
             Net::GroundPick => Driving::GroundPick,
             Net::GroundGrasp => Driving::GroundGrasp,
+            Net::GroundGrasp2 => Driving::GroundGrasp2,
             Net::Skill(index) => Driving::Skill(
                 self.skills
                     .skills
@@ -329,7 +345,7 @@ impl Controller {
         self.last_action = from.last_action;
         self.previous = from.previous;
         self.ground_pick = from.ground_pick;
-        self.grasping = from.grasping;
+        self.grasp = from.grasp;
         self.active = from.active;
         self.sit = from.sit;
         self.sit_settle = from.sit_settle;
@@ -430,21 +446,36 @@ impl Controller {
             return Err(reason);
         }
         self.ground_pick = Some(0.0);
-        self.grasping = false;
+        self.grasp = None;
         Ok(())
     }
 
     /// Start the ground grasp: the ground pick's cycle on the grasp's network, refused for the
     /// same reasons.
     pub fn start_ground_grasp(&mut self) -> Result<(), &'static str> {
-        if !self.policy.has_ground_grasp() {
-            return Err("no ground-grasp policy loaded");
+        self.start_grasp(Grasp::First)
+    }
+
+    /// Start the second grasp, likewise.
+    pub fn start_ground_grasp_2(&mut self) -> Result<(), &'static str> {
+        self.start_grasp(Grasp::Second)
+    }
+
+    fn start_grasp(&mut self, grasp: Grasp) -> Result<(), &'static str> {
+        match grasp {
+            Grasp::First if !self.policy.has_ground_grasp() => {
+                return Err("no ground-grasp policy loaded");
+            }
+            Grasp::Second if !self.policy.has_ground_grasp_2() => {
+                return Err("no ground_grasp_2 policy loaded");
+            }
+            _ => {}
         }
         if let Some(reason) = self.move_blocked() {
             return Err(reason);
         }
         self.ground_pick = Some(0.0);
-        self.grasping = true;
+        self.grasp = Some(grasp);
         Ok(())
     }
 
@@ -457,8 +488,18 @@ impl Controller {
     /// the legs ran on — 0.005 of a 4 s cycle, inside the ±0.01 the close is jittered by in
     /// training.
     pub fn ground_grasp_mouth(&self) -> Option<f64> {
-        let phase = self.ground_pick.filter(|_| self.grasping)?;
-        Some(grasp_mouth(&self.skills, phase))
+        let phase = self.ground_pick?;
+        let (mouth, close) = match self.grasp? {
+            Grasp::First => (
+                self.skills.ground_grasp_mouth,
+                self.skills.ground_grasp_mouth_close,
+            ),
+            Grasp::Second => (
+                self.skills.ground_grasp_2_mouth,
+                self.skills.ground_grasp_2_mouth_close,
+            ),
+        };
+        Some(grasp_mouth(mouth, close, phase))
     }
 
     /// Every one-shot skill this robot has, in priority order — what a client may ask for.
@@ -683,10 +724,10 @@ impl Controller {
                 twist: [angle.cos(), angle.sin(), 0.0],
                 ..Command::default()
             };
-            if self.grasping {
-                (Net::GroundGrasp, c, "ground_grasp".into())
-            } else {
-                (Net::GroundPick, c, "ground_pick".into())
+            match self.grasp {
+                Some(Grasp::First) => (Net::GroundGrasp, c, "ground_grasp".into()),
+                Some(Grasp::Second) => (Net::GroundGrasp2, c, "ground_grasp_2".into()),
+                None => (Net::GroundPick, c, "ground_pick".into()),
             }
         } else {
             let mut c = *command;
@@ -759,7 +800,7 @@ impl Controller {
                 });
                 (scale, (self.tuning.gain as f64 * ratio).round() as u16)
             }
-            Net::GroundPick | Net::GroundGrasp => (
+            Net::GroundPick | Net::GroundGrasp | Net::GroundGrasp2 => (
                 self.skills.ground_pick_action_scale,
                 (self.tuning.gain as f64 * self.skills.ground_pick_gain_ratio).round() as u16,
             ),
@@ -929,7 +970,13 @@ mod tests {
     #[test]
     fn the_grasp_mouth_plays_the_training_schedule() {
         let skills = SkillTuning::default();
-        let at = |phase: f64| grasp_mouth(&skills, phase);
+        let at = |phase: f64| {
+            grasp_mouth(
+                skills.ground_grasp_mouth,
+                skills.ground_grasp_mouth_close,
+                phase,
+            )
+        };
         assert_eq!(at(0.0), 0.0, "closed as the grasp starts");
         assert!((at(0.06) - 0.44).abs() < 1e-9, "halfway open at 0.06");
         assert_eq!(at(0.2), 0.88, "fully open on the way down");
@@ -950,6 +997,7 @@ mod tests {
                 sitstand: Some(net.clone()),
                 ground_pick: Some(net.clone()),
                 ground_grasp: Some(net.clone()),
+                ground_grasp_2: Some(net.clone()),
                 skills: vec![net.clone(), net],
                 ..Default::default()
             },
@@ -967,6 +1015,8 @@ mod tests {
             Tuning::default(),
             SkillTuning {
                 skills: vec![skill("kick_left", 0.5, false), skill("roulade", 1.0, true)],
+                ground_grasp_2_mouth: 0.775,
+                ground_grasp_2_mouth_close: 0.34,
                 ..SkillTuning::default()
             },
         )
@@ -1003,6 +1053,16 @@ mod tests {
             c.ground_grasp_mouth(),
             None,
             "a plain pick leaves the mouth alone"
+        );
+        tick(&mut c, 2.4);
+
+        assert_eq!(c.start_ground_grasp_2(), Ok(()));
+        tick(&mut c, 0.8);
+        assert_eq!(c.driving(), Some(Driving::GroundGrasp2));
+        assert_eq!(
+            c.ground_grasp_mouth(),
+            Some(0.775),
+            "the second grasp plays its own opening"
         );
     }
 
