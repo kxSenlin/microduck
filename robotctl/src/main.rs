@@ -53,6 +53,7 @@ mod monitor;
 mod path_map;
 mod runlog;
 mod show;
+mod stress;
 mod vetbook;
 
 /// Exit codes. Stable — CI asserts on these.
