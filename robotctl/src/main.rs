@@ -51,6 +51,7 @@ mod imu_view;
 mod led;
 mod monitor;
 mod path_map;
+mod runlog;
 mod show;
 mod vetbook;
 
