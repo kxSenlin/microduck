@@ -139,6 +139,12 @@ or `torque_unknown` and named motors. The operator can explicitly use existing r
 These are authority/state preconditions, not pickup or posture checks. Acquisition never relaxes,
 homes, moves, enables torque or automatically adopts powered joints.
 
+All 15 drive modes must also be known with bit 3 (`0x08`) clear. On XL330 firmware 46+
+[Drive Mode(10), Torque On by Goal Update](https://emanual.robotis.com/docs/en/dxl/x/xl330-m288/#drive-mode10)
+can energize a motor when a goal is written, including during seeding or normal-goal restoration.
+Unknown modes or this bit refuse acquisition with `unsupported_drive_mode` and named motors;
+selected torque-on rechecks the fresh mode before seeding. No EEPROM settings are changed.
+
 After admission, clear pending normal intents and bind exclusive ownership to peer credentials,
 originating connection and daemon boot epoch. A session ID identifies this session; no extra
 token is necessary. Reconnecting can inspect status but cannot resume ownership or replay motion.

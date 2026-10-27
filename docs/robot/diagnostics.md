@@ -30,6 +30,9 @@ motors are not measured simultaneously. Goal readback confirms a register, not p
 
 Choose support and clearance yourself. Entry does not move or relax the robot and requires normal
 control disabled, no pending actuator sequence and all 15 torque registers freshly read off.
+Entry also requires known drive modes with Torque On by Goal Update disabled; otherwise it
+reports `unsupported_drive_mode` and the affected motors. This prevents goal writes from
+implicitly energizing motors; entry does not change EEPROM settings.
 If entry reports torque_on, cut torque explicitly with the robot supported:
 
 ```sh

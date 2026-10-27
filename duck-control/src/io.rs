@@ -232,6 +232,8 @@ pub struct ServoIdentity {
 /// written, so a loop driving it behaves like a servo that tracks perfectly.
 pub struct FakeIo {
     pub diagnostic_torques: [bool; NUM_JOINTS],
+    pub diagnostic_drive_modes: [Option<u8>; NUM_JOINTS],
+    pub diagnostic_write_attempts: std::sync::Arc<std::sync::atomic::AtomicUsize>,
     pub diagnostic_pids: [crate::diagnostics::Pid; NUM_JOINTS],
     pub diagnostic_goals: [f64; NUM_JOINTS],
     pub diagnostic_writes: Vec<u8>,
@@ -289,6 +291,8 @@ impl FakeIo {
             sensors: Sensors::default(),
             fail_next_read: false,
             diagnostic_torques: [false; NUM_JOINTS],
+            diagnostic_drive_modes: [Some(0); NUM_JOINTS],
+            diagnostic_write_attempts: Default::default(),
             diagnostic_pids: [crate::diagnostics::Pid { p: 200, i: 0, d: 0 }; NUM_JOINTS],
             diagnostic_goals: [0.0; NUM_JOINTS],
             diagnostic_writes: vec![],
@@ -386,13 +390,15 @@ impl RobotIo for FakeIo {
         );
         m.pid = Some(self.diagnostic_pids[i]);
         m.operating_mode = Some(3);
-        m.drive_mode = Some(0);
+        m.drive_mode = self.diagnostic_drive_modes[i];
         m.min_position_rad = Some(-std::f64::consts::PI);
         m.max_position_rad = Some(std::f64::consts::PI * 4094.0 / 4096.0);
         m.homing_offset_counts = Some(crate::model::homing_offset(id));
         Ok(m)
     }
     fn diagnostic_goals(&mut self, goals: &[(u8, f64)]) -> Result<()> {
+        self.diagnostic_write_attempts
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         for &(id, q) in goals {
             let i = crate::diagnostics::index(id)?;
             if self.diagnostic_fail_id == Some(id) {
@@ -407,6 +413,8 @@ impl RobotIo for FakeIo {
         Ok(())
     }
     fn diagnostic_torque(&mut self, id: u8, on: bool) -> Result<()> {
+        self.diagnostic_write_attempts
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         if self.diagnostic_fail_id == Some(id) {
             return Err(IoError::Simulated);
         }
@@ -416,6 +424,8 @@ impl RobotIo for FakeIo {
         Ok(())
     }
     fn diagnostic_pid(&mut self, id: u8, pid: crate::diagnostics::Pid) -> Result<()> {
+        self.diagnostic_write_attempts
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         if self.diagnostic_fail_id == Some(id) {
             return Err(IoError::Simulated);
         }

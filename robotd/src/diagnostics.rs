@@ -390,6 +390,21 @@ impl Controller {
                         })
                         .collect();
                     r
+                } else if self.motors.iter().any(|m| !goal_writes_preserve_torque(m)) {
+                    let mut r = d::Reply::refused("unsupported_drive_mode");
+                    r.outcomes = self
+                        .motors
+                        .iter()
+                        .filter(|m| !goal_writes_preserve_torque(m))
+                        .map(|m| d::Outcome {
+                            joint: m.joint.clone(),
+                            status: "unsupported_drive_mode".into(),
+                            error: Some(
+                                "drive mode is unknown or enables torque on goal update".into(),
+                            ),
+                        })
+                        .collect();
+                    r
                 } else {
                     self.sent_targets.clear();
                     self.last_command = None;
@@ -659,6 +674,8 @@ impl Controller {
                     let m = &self.motors[i];
                     let result = if m.torque == Some(true) && self.controlled[i] {
                         Ok(())
+                    } else if !goal_writes_preserve_torque(m) {
+                        Err("unsupported_drive_mode".into())
                     } else if m.operating_mode != Some(3) || m.torque != Some(false) {
                         Err("wrong_mode_or_unknown_torque".into())
                     } else {
@@ -784,6 +801,12 @@ impl Controller {
             outcomes,
         }
     }
+}
+
+// XL330 Drive Mode bit 3 energizes an off motor when a goal is written. Both goal seeding
+// and the normal-goal exit restore rely on goal writes preserving the confirmed torque state.
+fn goal_writes_preserve_torque(motor: &d::Motor) -> bool {
+    motor.drive_mode.is_some_and(|mode| mode & 0x08 == 0)
 }
 
 /// Relay UIDs never acquire maintenance authority, even if in an operator group.
@@ -1167,6 +1190,75 @@ mod tests {
         }
         assert!(rx.try_recv().unwrap().accepted);
         assert!(c.blocked());
+    }
+    #[test]
+    fn unsafe_or_unknown_drive_modes_refuse_admission_without_writes() {
+        // An all-off snapshot alone is insufficient: goal seeding/exit restore can energize
+        // native Torque On by Goal Update motors. Every selection, including mouth, is checked.
+        for i in 0..NUM_JOINTS {
+            for mode in [None, Some(0x08)] {
+                let shared = Arc::new(Shared::new());
+                let mut c = Controller::new(shared);
+                let mut io = FakeIo::new();
+                io.diagnostic_drive_modes[i] = mode;
+                let writes = io.diagnostic_write_attempts.clone();
+                let mut s = Safety::new(io, SafetyConfig::default());
+                let (tx, mut rx) = oneshot::channel();
+                c.shared
+                    .tx
+                    .try_send(Pending {
+                        connection: 1,
+                        call: d::Call::Acquire(d::Acquire {
+                            request_id: 1,
+                            mode: "maintenance_raw".into(),
+                            acknowledge_raw: true,
+                        }),
+                        reply: tx,
+                    })
+                    .unwrap();
+                for _ in 0..18 {
+                    c.tick(&mut s, Instant::now(), true);
+                }
+                let reply = rx.try_recv().unwrap();
+                assert!(!reply.accepted);
+                assert_eq!(reply.reason.as_deref(), Some("unsupported_drive_mode"));
+                assert_eq!(reply.outcomes[0].joint, JOINT_NAMES[i]);
+                assert!(c.session.is_none());
+                assert_eq!(c.shared.owner.load(Ordering::Acquire), 0);
+                assert_eq!(writes.load(Ordering::Relaxed), 0);
+            }
+        }
+    }
+    #[test]
+    fn fresh_unsafe_drive_mode_refuses_goal_seeding_without_writes() {
+        // A fresh selected read must still guard the seed even if configuration changed after
+        // admission. This models that state without introducing any EEPROM-writing API.
+        for mode in [None, Some(0x08)] {
+            let shared = Arc::new(Shared::new());
+            let mut c = Controller::new(shared);
+            let mut io = FakeIo::new();
+            io.diagnostic_drive_modes[9] = mode;
+            let writes = io.diagnostic_write_attempts.clone();
+            let mut s = Safety::new(io, SafetyConfig::default());
+            acquired(&mut c, Instant::now());
+            let reply = req(
+                &mut c,
+                &mut s,
+                d::Call::Torque(d::Torque {
+                    session_id: 1,
+                    request_id: 2,
+                    joints: vec!["mouth".into()],
+                    on: true,
+                }),
+            );
+            assert!(!reply.accepted);
+            assert_eq!(
+                reply.outcomes[0].error.as_deref(),
+                Some("unsupported_drive_mode")
+            );
+            assert_eq!(writes.load(Ordering::Relaxed), 0);
+            assert!(!c.controlled[9]);
+        }
     }
     #[test]
     fn a_torqued_or_busy_robot_is_not_adopted() {
