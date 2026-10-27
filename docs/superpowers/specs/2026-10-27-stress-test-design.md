@@ -105,7 +105,9 @@ the robot stays near its start without navigating. Three blocks:
 | step | length |
 |------|--------|
 | walk forward | 7 s |
+| turn in place left | 2 s |
 | walk backward | 7 s |
+| turn in place right | 2 s |
 
 **C — sit/stand, ×3**
 
@@ -114,11 +116,11 @@ the robot stays near its start without navigating. Three blocks:
 | sit (`sit_toggle`), seated | 3 s |
 | rise (`sit_toggle`), standing | 2 s |
 
-Then the next lap. Six provoked falls per lap. No turns in place (*my call*: you did not list
-them, and the lap stays symmetric without them). The sit and stand lengths count from the
+Then the next lap. Six provoked falls per lap. The two turns cancel, so the lap stays
+symmetric (*my call*: short turns in place rather than a curved walk). The sit and stand lengths count from the
 `sit_toggle` that starts them.
 
-Speeds are fixed (full stick: 0.3 m/s, `endurance`'s default). The script is data in
+Speeds are fixed (full stick: 0.3 m/s, 1.5 rad/s, `endurance`'s defaults). The script is data in
 the code with a version string; the version goes in `meta.json` and each sample row carries the
 lap number and step index, so runs compare lap for lap.
 
