@@ -43,8 +43,8 @@ const C: [[&str; 2]; 3] = [
     ["C3.sit", "C3.stand"],
 ];
 
-/// The lap, expanded: A ×3 (2 s forward, fall; 2 s back, fall), B (7 s forward, 2 s left, 7 s
-/// back, 2 s right), C ×3 (3 s seated, 2 s standing).
+/// The lap, expanded: A ×3 (2 s forward, fall; 2 s back, fall), B (3 s forward, 3 s back, 2 s
+/// left, 2 s right), C ×3 (3 s seated, 2 s standing).
 pub fn lap(speed: f64, vyaw: f64) -> Vec<Step> {
     let step = |name, action, seconds| Step {
         name,
@@ -59,9 +59,10 @@ pub fn lap(speed: f64, vyaw: f64) -> Vec<Step> {
         steps.push(step(back, walk(-speed, 0.0), 2.0));
         steps.push(step(fall_back, Action::Fall { vx: -speed }, 0.0));
     }
-    steps.push(step("B.fwd", walk(speed, 0.0), 7.0));
+    // Back before turning: a turn between the two would send the walk back further out.
+    steps.push(step("B.fwd", walk(speed, 0.0), 3.0));
+    steps.push(step("B.back", walk(-speed, 0.0), 3.0));
     steps.push(step("B.left", walk(0.0, vyaw), 2.0));
-    steps.push(step("B.back", walk(-speed, 0.0), 7.0));
     steps.push(step("B.right", walk(0.0, -vyaw), 2.0));
     for [sit, stand] in C {
         steps.push(step(sit, Action::Sit, 3.0));
@@ -111,6 +112,29 @@ mod tests {
         })
     }
 
+    /// Where the lap takes the robot on the floor, steps integrated in the world frame: the end
+    /// point and the furthest it gets from the start.
+    fn on_the_floor(steps: &[Step]) -> ((f64, f64), f64) {
+        let (mut x, mut y, mut yaw, mut far) = (0.0_f64, 0.0_f64, 0.0_f64, 0.0_f64);
+        for s in steps {
+            if let Action::Walk { vx, vyaw } = s.action {
+                // Turns and translations never share a step, so each integrates exactly.
+                x += vx * s.seconds * yaw.cos();
+                y += vx * s.seconds * yaw.sin();
+                yaw += vyaw * s.seconds;
+                far = far.max(x.hypot(y));
+            }
+        }
+        ((x, y), far)
+    }
+
+    #[test]
+    fn a_lap_ends_where_it_started_on_the_floor() {
+        let ((x, y), far) = on_the_floor(&lap(0.3, 1.5));
+        assert!(x.hypot(y) < 1e-9, "ends {x:.2}, {y:.2} from the start");
+        assert!((far - 0.9).abs() < 1e-9, "goes {far:.2} m out");
+    }
+
     #[test]
     fn a_lap_has_six_falls_three_forward_three_back() {
         let steps = lap(0.3, 1.5);
@@ -150,21 +174,21 @@ mod tests {
             )
         );
         assert_eq!(row(3), ("A1.fall_back", Action::Fall { vx: -0.3 }, 0.0));
-        assert_eq!(row(12), ("B.fwd", Action::Walk { vx: 0.3, vyaw: 0.0 }, 7.0));
+        assert_eq!(row(12), ("B.fwd", Action::Walk { vx: 0.3, vyaw: 0.0 }, 3.0));
         assert_eq!(
             row(13),
-            ("B.left", Action::Walk { vx: 0.0, vyaw: 1.5 }, 2.0)
-        );
-        assert_eq!(
-            row(14),
             (
                 "B.back",
                 Action::Walk {
                     vx: -0.3,
                     vyaw: 0.0
                 },
-                7.0
+                3.0
             )
+        );
+        assert_eq!(
+            row(14),
+            ("B.left", Action::Walk { vx: 0.0, vyaw: 1.5 }, 2.0)
         );
         assert_eq!(
             row(15),
@@ -189,11 +213,11 @@ mod tests {
         let mut s = Schedule::default();
         let mut now = 0.0;
         let mut deadline: f64 = 0.0;
-        for seconds in [2.0, 2.0, 7.0, 2.0, 7.0, 2.0] {
+        for seconds in [2.0, 2.0, 3.0, 3.0, 2.0, 2.0] {
             deadline = s.deadline(seconds, now);
             now = deadline + 0.03;
         }
-        assert!((deadline - 22.0).abs() < 1e-9, "{deadline}");
+        assert!((deadline - 14.0).abs() < 1e-9, "{deadline}");
     }
 
     #[test]

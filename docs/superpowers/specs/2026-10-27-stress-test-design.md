@@ -104,9 +104,9 @@ the robot stays near its start without navigating. Three blocks:
 
 | step | length |
 |------|--------|
-| walk forward | 7 s |
+| walk forward | 3 s |
+| walk backward | 3 s |
 | turn in place left | 2 s |
-| walk backward | 7 s |
 | turn in place right | 2 s |
 
 **C — sit/stand, ×3**
@@ -116,8 +116,8 @@ the robot stays near its start without navigating. Three blocks:
 | sit (`sit_toggle`), seated | 3 s |
 | rise (`sit_toggle`), standing | 2 s |
 
-Then the next lap. Six provoked falls per lap. The two turns cancel, so the lap stays
-symmetric (*my call*: short turns in place rather than a curved walk). The sit and stand lengths count from the
+Then the next lap. Six provoked falls per lap. The walk comes back before the turns and the two turns cancel, so the lap
+ends where it started (*my call*: short turns in place rather than a curved walk). The sit and stand lengths count from the
 `sit_toggle` that starts them.
 
 Speeds are fixed (full stick: 0.3 m/s, 1.5 rad/s, `endurance`'s defaults). The script is data in

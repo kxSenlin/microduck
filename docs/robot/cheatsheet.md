@@ -619,7 +619,7 @@ lap (`stress-v1`, written into `meta.json`):
 | block | steps |
 | --- | --- |
 | A ×3 | 2 s forward → fall forward; 2 s back → fall back |
-| B | 7 s forward, 2 s turn left, 7 s back, 2 s turn right |
+| B | 3 s forward, 3 s back, 2 s turn left, 2 s turn right |
 | C ×3 | 3 s seated, 2 s standing |
 
 Every get-up is timed: up means not fallen for 1 s, seated upright counts (it is stood up after).
