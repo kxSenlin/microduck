@@ -603,6 +603,38 @@ scp -r microduck@<duck>:/var/lib/endurance/ . && uv run scripts/endurance-plot.p
 `--out` on an existing run directory appends to it, so a restarted test stays one battery curve.
 Walk speed, turn rate, the radius and the activity mix are options; `--help` lists them.
 
+### Falls and get-ups test
+
+```
+sudo robotctl stress
+robotctl stress status
+sudo robotctl stress stop
+```
+
+A violent test, the same on every robot so runs compare lap for lap: it walks, is made to fall,
+gets itself up, and does it again until the battery is empty. A fall is the pad's Start tapped
+mid-stride — the policy off for 0.5 s (`--cut`) and back while the robot is still going down. One
+lap (`stress-v1`, written into `meta.json`):
+
+| block | steps |
+| --- | --- |
+| A ×3 | 2 s forward → fall forward; 2 s back → fall back |
+| B | 7 s forward, 2 s turn left, 7 s back, 2 s turn right |
+| C ×3 | 3 s seated, 2 s standing |
+
+Every get-up is timed: up means not fallen for 1 s, seated upright counts (it is stood up after).
+Still down 7 s after the policy came back (`--getup-timeout`), the policy is cut for 2 s
+(`--reset`) and given one more 7 s; still down then, the run gives up, cuts torque and only logs.
+It stays within ±0.5 m of where it started on odometry (`--square`; coarse, since falls drift it)
+and turns away from anything closer than 20 cm ahead on the head ToF (`--wall`); a duck without
+the ToF logs `no_tof` once and runs on odometry alone. Run it in a pen, with no pad connected.
+
+Same background unit, battery hand-off and files as `endurance`, under `/var/lib/stress/` —
+`samples.csv` gains `lap` and `step`, and `events.csv` carries `lap_start`, `fall_triggered`,
+`fallen`, `no_fall`, `got_up` (seconds), `getup_failed`, `long_reset`, `gave_up`,
+`fallen_unprovoked`, `wall_guard` and `square_guard`. `scripts/endurance-plot.py` draws one run or
+overlays several.
+
 ### Gamepad (`configd`)
 
 What each button *does* — and how to change it — is under **Policies and skills** above

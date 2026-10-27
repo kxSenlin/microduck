@@ -70,6 +70,36 @@ pub fn lap(speed: f64, vyaw: f64) -> Vec<Step> {
     steps
 }
 
+/// Late by less than this is jitter, and the next step keeps the old anchor; later is an
+/// overrun, and the schedule starts again from now.
+const SLACK: f64 = 0.2;
+
+/// When each timed step ends. Each one starts where the last one was due to end, not when the
+/// driver got round to it, so the lap's timeline is the same on every robot; only a get-up
+/// (which has no length of its own) or an overrun moves it on.
+#[derive(Debug, Default, Clone)]
+pub struct Schedule {
+    anchor: Option<f64>,
+}
+
+impl Schedule {
+    /// The deadline of a step of `seconds` beginning now.
+    pub fn deadline(&mut self, seconds: f64, now: f64) -> f64 {
+        let start = match self.anchor {
+            Some(anchor) if anchor >= now - SLACK => anchor,
+            _ => now,
+        };
+        let deadline = start + seconds;
+        self.anchor = Some(deadline);
+        deadline
+    }
+
+    /// A get-up just ended: the next step starts when it begins.
+    pub fn unanchor(&mut self) {
+        self.anchor = None;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -150,5 +180,30 @@ mod tests {
         assert_eq!(row(16), ("C1.sit", Action::Sit, 3.0));
         assert_eq!(row(17), ("C1.stand", Action::Stand, 2.0));
         assert_eq!(steps[21].name, "C3.stand");
+    }
+
+    #[test]
+    fn the_schedule_does_not_slip_when_a_step_is_cut() {
+        // Every step comes back 30 ms late — a tick of jitter, or a guard that ended its step
+        // early and waited out the slot. The lap still ends when its lengths say.
+        let mut s = Schedule::default();
+        let mut now = 0.0;
+        let mut deadline: f64 = 0.0;
+        for seconds in [2.0, 2.0, 7.0, 2.0, 7.0, 2.0] {
+            deadline = s.deadline(seconds, now);
+            now = deadline + 0.03;
+        }
+        assert!((deadline - 22.0).abs() < 1e-9, "{deadline}");
+    }
+
+    #[test]
+    fn a_get_up_moves_the_schedule_on() {
+        let mut s = Schedule::default();
+        assert_eq!(s.deadline(2.0, 0.0), 2.0);
+        // The fall after it took 4.5 s to get up from: the next step starts then.
+        s.unanchor();
+        assert_eq!(s.deadline(2.0, 6.5), 8.5);
+        // A step that overran its slot (a fall nobody asked for, mid-walk) does too.
+        assert_eq!(s.deadline(2.0, 12.0), 14.0);
     }
 }

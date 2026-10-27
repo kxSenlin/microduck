@@ -437,6 +437,22 @@ enum Namespace {
         args: endurance::EnduranceArgs,
     },
 
+    /// Falls and get-ups until the battery is empty: a fixed lap of short walks cut mid-stride
+    /// by switching the policy off for half a second, a longer walk with two turns, and three
+    /// sit/stands — the same on every robot, so runs compare lap for lap.
+    ///
+    /// Every get-up is timed; a robot still down 7 s after the policy came back gets a 2 s cut
+    /// and one more try, then the run gives up and cuts torque. Stays in a 1 m square on
+    /// odometry and stops short of walls on the head ToF. Starts in the background like
+    /// `endurance`, logging to /var/lib/stress. Needs root; no pad connected.
+    #[command(args_conflicts_with_subcommands = true)]
+    Stress {
+        #[command(subcommand)]
+        command: Option<stress::StressCommand>,
+        #[command(flatten)]
+        args: stress::StressArgs,
+    },
+
     /// Print a shell completion script on stdout.
     ///
     /// Generated from this binary's own command tree, so the completions a robot offers
@@ -5385,6 +5401,9 @@ fn run(cli: Cli) -> Result<(), Failure> {
         }
         Namespace::Endurance { command, args } => {
             return endurance::run(&cli.robot_socket, command, args);
+        }
+        Namespace::Stress { command, args } => {
+            return stress::run(&cli.robot_socket, &cli.tof_socket, command, args);
         }
         Namespace::Quack => {
             return run_quack(&cli.robot_socket);
