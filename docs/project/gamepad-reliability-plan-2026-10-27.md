@@ -174,3 +174,10 @@ Limites préexistantes constatées, laissées intactes :
 
 Les essais physiques, la vérification de `uniq` sur ce clone et la mesure ED/E9 restent à faire
 ensemble. Les résultats simulés ne constituent pas une validation Bluetooth sur graphite-boom.
+
+## Préparation CI
+
+Pour passer le contrôle Clippy strict de la CI, l’expression de fraîcheur du ToF dans
+robotctl/src/monitor.rs a été simplifiée conformément au lint nonminimal_bool signalé
+précédemment : même traitement de None et même comparaison de durée. Aucun changement
+de seuil ni de comportement du moniteur. Les tests du moniteur sont relancés avant le push.
