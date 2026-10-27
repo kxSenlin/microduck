@@ -22,7 +22,7 @@ name: ci
 # is not available here however much this asks for it. Keep the two copies identical.
 on:
   push:
-    branches: [main]
+    branches: [main, codex/gamepad-connection]
     paths-ignore:
       - 'docs/**'
       - '**/*.md'
