@@ -51,12 +51,16 @@ Provoked exactly as with the pad's Start button while walking:
 
 1. walk at full command (forward or backward, `robot.move` at 20 Hz);
 2. `robot.enable { on: false }`: the policy stops and `robotd` ramps to the home pose; mid-stride
-   the robot falls;
-3. wait a fixed short delay on the floor (1.5 s, my call);
-4. `robot.enable { on: true }`: the policy resumes and gets the robot up.
+   the robot loses its balance;
+3. **0.5 s later**, `robot.enable { on: true }`: the policy comes back while the robot is still
+   falling. The off time is short on purpose — a longer one lets the ramp to the home pose
+   settle the robot, which is a softer fall and an easier get-up than a real one;
+4. the test then watches for the robot to be down (`safety.fallen`, debounced 0.2 s in `robotd`)
+   and for it to get up.
 
-If the robot did not fall (`safety.fallen` never set between 2 and 4), the event is logged as
-`no_fall` and the lap continues. That is data, not an error.
+If the robot did not fall (`safety.fallen` never set within ~2 s of the enable — *my call*), the
+event is logged as `no_fall` and the lap continues. That is data, not an error: with only 0.5 s
+off, some cuts will be caught by the policy, and the rate is worth comparing too.
 
 ## The get-up and giving up
 
@@ -84,24 +88,37 @@ scheduled time.
 
 ## The lap (`stress-v1`)
 
-A fixed script, repeated until the battery is empty. Roughly symmetric so the robot stays near
-its start without navigating:
+A fixed script, repeated until the battery is empty. Symmetric (as much forward as backward) so
+the robot stays near its start without navigating. Three blocks:
 
-| # | step | length |
-|---|------|--------|
-| 1 | walk forward | 6 s |
-| 2 | fall (forward), get up | — |
-| 3 | walk backward | 6 s |
-| 4 | fall (backward), get up | — |
-| 5 | turn in place left | 4 s |
-| 6 | turn in place right | 4 s |
-| 7 | walk forward | 5 s |
-| 8 | walk backward | 5 s |
-| 9 | stand | 5 s |
-| 10 | sit | 4 s |
-| 11 | rise (sit toggle), settle | — |
+**A — falls, ×3**
 
-Speeds are fixed (full stick: 0.3 m/s, 1.5 rad/s, `endurance`'s defaults). The script is data in
+| step | length |
+|------|--------|
+| walk forward | 2 s |
+| cut 0.5 s → fall forward, get up | — |
+| walk backward | 2 s |
+| cut 0.5 s → fall backward, get up | — |
+
+**B — walk, ×1**
+
+| step | length |
+|------|--------|
+| walk forward | 7 s |
+| walk backward | 7 s |
+
+**C — sit/stand, ×3**
+
+| step | length |
+|------|--------|
+| sit (`sit_toggle`), seated | 3 s |
+| rise (`sit_toggle`), standing | 2 s |
+
+Then the next lap. Six provoked falls per lap. No turns in place (*my call*: you did not list
+them, and the lap stays symmetric without them). The sit and stand lengths count from the
+`sit_toggle` that starts them.
+
+Speeds are fixed (full stick: 0.3 m/s, `endurance`'s default). The script is data in
 the code with a version string; the version goes in `meta.json` and each sample row carries the
 lap number and step index, so runs compare lap for lap.
 
