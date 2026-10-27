@@ -175,23 +175,10 @@ impl Rng {
     }
 }
 
-fn wrap(angle: f64) -> f64 {
-    angle.sin().atan2(angle.cos())
-}
-
-/// Forward speed and turn rate toward `goal` from `(x, y, yaw)`: on the spot when the goal is
-/// well off the nose, otherwise forward with a saturating heading correction.
 fn steer(pose: (f64, f64, f64), goal: (f64, f64), args: &EnduranceArgs) -> (f64, f64) {
-    let (x, y, yaw) = pose;
-    let err = wrap((goal.1 - y).atan2(goal.0 - x) - yaw);
-    if err.abs() > args.turn_threshold {
-        (0.0, args.vyaw.copysign(err))
-    } else {
-        (args.speed, (2.5 * err).clamp(-args.vyaw, args.vyaw))
-    }
+    crate::stress::guard::toward(pose, goal, args.speed, args.vyaw, args.turn_threshold)
 }
 
-/// A point inside the goal disc, far enough from here that getting there is a walk.
 fn new_goal(rng: &mut Rng, here: (f64, f64), home: (f64, f64), radius: f64) -> (f64, f64) {
     for _ in 0..50 {
         let r = radius * rng.unit().sqrt();

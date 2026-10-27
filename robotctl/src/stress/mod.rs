@@ -6,4 +6,6 @@
 #[allow(dead_code)]
 mod getup;
 #[allow(dead_code)]
+pub(crate) mod guard;
+#[allow(dead_code)]
 mod lap;
