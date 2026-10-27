@@ -2230,6 +2230,7 @@ async fn control_loop<T: RobotIo>(
         predicted_z: params.safety.limp_fall_predict_z,
         lookahead: Duration::from_millis(params.safety.limp_fall_lookahead_ms),
         debounce: Duration::from_millis(params.safety.limp_fall_debounce_ms),
+        arm: Duration::from_millis(params.safety.limp_fall_arm_ms),
     });
     let limp_fall_still = Duration::from_millis(params.safety.limp_fall_still_ms);
     let limp_fall_max = Duration::from_millis(params.safety.limp_fall_max_ms);
