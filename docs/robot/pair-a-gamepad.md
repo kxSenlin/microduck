@@ -113,6 +113,11 @@ budget including waiting for another pair/connect operation. An operation alread
 is observed rather than started twice. A failure reports its phase and BlueZ's error; it leaves
 the association intact. Run `pad status` afterwards for service discovery and HID recognition.
 
+For an already-associated Pro Controller, a brief press of Home is the normal reconnect
+path. Allow it to reconnect automatically, then inspect `pad status`. `pad connect` is a
+troubleshooting request to a reachable controller, not a remote wake command. A page timeout
+means the radio did not receive a response; it does not establish that the controller was awake.
+
 Use Sync and `pad pair` only for a new association. Re-running pair on an existing association
 only repairs trust; it does not request a connection. On boards with the radio workaround,
 `pad pair` power-cycles the adapter, disconnecting other Bluetooth users and potentially
