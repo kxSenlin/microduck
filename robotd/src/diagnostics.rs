@@ -1195,7 +1195,7 @@ mod tests {
     fn unsafe_or_unknown_drive_modes_refuse_admission_without_writes() {
         // An all-off snapshot alone is insufficient: goal seeding/exit restore can energize
         // native Torque On by Goal Update motors. Every selection, including mouth, is checked.
-        for i in 0..NUM_JOINTS {
+        for (i, joint) in JOINT_NAMES.iter().enumerate() {
             for mode in [None, Some(0x08)] {
                 let shared = Arc::new(Shared::new());
                 let mut c = Controller::new(shared);
@@ -1222,7 +1222,7 @@ mod tests {
                 let reply = rx.try_recv().unwrap();
                 assert!(!reply.accepted);
                 assert_eq!(reply.reason.as_deref(), Some("unsupported_drive_mode"));
-                assert_eq!(reply.outcomes[0].joint, JOINT_NAMES[i]);
+                assert_eq!(reply.outcomes[0].joint, *joint);
                 assert!(c.session.is_none());
                 assert_eq!(c.shared.owner.load(Ordering::Acquire), 0);
                 assert_eq!(writes.load(Ordering::Relaxed), 0);
