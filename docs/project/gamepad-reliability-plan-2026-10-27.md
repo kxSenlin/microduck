@@ -181,3 +181,19 @@ Pour passer le contrôle Clippy strict de la CI, l’expression de fraîcheur du
 robotctl/src/monitor.rs a été simplifiée conformément au lint nonminimal_bool signalé
 précédemment : même traitement de None et même comparaison de durée. Aucun changement
 de seuil ni de comportement du moniteur. Les tests du moniteur sont relancés avant le push.
+
+
+## Version combinée Bluetooth et diagnostics
+
+Le build Bluetooth seul `0.17.9-dev.1451.f169c3d` a été publié et signé par la CI.
+La branche intègre désormais les diagnostics jusqu’au commit `38d0331`, déjà validés
+sur le robot par la session diagnostics. L’API combinée est 46 : les deux branches
+indépendantes avaient chacune utilisé 45. Installer tous les daemons et le robotctl
+correspondant préserve les deux ensembles de routes. Aucun déploiement combiné n’a
+encore été effectué. La reconnexion explicite depuis une manette déconnectée mais
+éveillée reste un essai matériel à terminer.
+
+Les tags de développement contiennent un slash. Avec l’updater actuellement installé,
+utiliser les quatre assets signés téléchargés de la release, puis le chemin `--from` ;
+le résolveur distant tronque actuellement le tag. La vérification normale des signatures
+et les gates de l’updater restent actives.
