@@ -18,8 +18,8 @@ WSLg 下 MuJoCo 原生 GLFW 窗口的渲染由 CPU 端的 Mesa→D3D12 翻译承
 | 公寓（233 geom） | 165 ms/帧，body_server 264% CPU，GPU 5% | 场景同步 2 ms/帧，GPU 由浏览器使用 |
 | 地面（82 geom） | 26 ms/帧 | 同上 |
 
-**已知问题**：4 只鸭子 + 浏览器时，首次场景推流会阻塞身体循环数秒，`boot` 的站立判定可能误报。
-身体循环恢复（`realtime 1.0`）后逐只执行 `robotctl robot enable` 即可站立。
+`boot` 在 enable 之前会先等 `realtime` 回到 1.0（浏览器首次推流会阻塞身体循环几秒），
+站立判定失败时自动重试最多 3 次，所以 4 只鸭子也能一次站好。
 
 ## 使用流程
 

@@ -758,6 +758,35 @@ PY
 # How fast the world is actually running. The daemons' loops are wall-clock, so a simulator below
 # real time is not merely slow to watch — the policies are driving robots that move less than they
 # expect, and they cannot balance one. Reported rather than left to be felt.
+# 身体当前实时倍率（sim_time 前进 / 墙钟时间），取不到时输出空串。
+body_factor() {
+    python3 - "$PORT" <<'PY'
+import json, socket, sys, time
+s = socket.socket(); s.settimeout(5); s.connect(("127.0.0.1", int(sys.argv[1])))
+f = s.makefile("rw")
+f.write(json.dumps({"op": "hello", "protocol": 1, "joints": 15}) + "\n"); f.flush(); f.readline()
+def now():
+    f.write('{"op": "read"}\n'); f.flush(); return json.loads(f.readline())["sim_time"]
+a, w = now(), time.perf_counter()
+time.sleep(3.0)
+print("%.2f" % ((now() - a) / (time.perf_counter() - w)))
+PY
+}
+
+# **等身体循环稳定到实时，再 enable 或判定站立。** 浏览器查看器第一次把场景推给浏览器，
+# 会占住物理线程几秒；那期间 enable，鸭子还坐在初始位置，随后就被判定成 did not stand。
+wait_realtime() {
+    local tries="${1:-60}" i=0 factor=""
+    while [ "$i" -lt "$tries" ]; do
+        factor="$(body_factor 2>/dev/null)" || factor=""
+        case "$factor" in
+            1.0*|0.9[5-9]) return 0 ;;
+        esac
+        i=$((i + 1)); sleep 1
+    done
+    return 1
+}
+
 realtime() {
     factor="$(python3 - "$PORT" <<'PY'
 import json, socket, sys, time
@@ -1062,6 +1091,9 @@ CONF
     done
     sleep 5
 
+    # 先等身体循环稳定再 enable，避免浏览器首次推流那几秒把站立动作吞掉。
+    wait_realtime 60 || true
+
     # Hand each to its policy, from inside — the socket lives in that container's own /run, which is
     # the point. `enable` rather than `init`: see `robotctl robot enable`.
     say "standing them up"
@@ -1078,10 +1110,29 @@ CONF
         i=$((i + 1))
     done
     sleep 5
-    i=0
-    while [ "$i" -lt "$DUCKS" ]; do
-        PORT_I="$(duck_port "$i")" upright_at "$(duck_port "$i")" "$(duck_name "$i")" || true
-        i=$((i + 1))
+    standing_attempt=0
+    while [ "$standing_attempt" -lt 3 ]; do
+        standing_attempt=$((standing_attempt + 1))
+        if [ "$standing_attempt" -gt 1 ]; then
+            say "retrying standing up (attempt $standing_attempt)"
+            wait_realtime 30 || true
+            i=0
+            while [ "$i" -lt "$DUCKS" ]; do
+                name="$(duck_name "$i")"
+                sudo systemd-run --machine="$name" --pipe --wait --quiet \
+                    /usr/local/bin/robotctl robot enable >/dev/null 2>&1 || true
+                i=$((i + 1))
+            done
+            sleep 6
+        fi
+        failed=0
+        i=0
+        while [ "$i" -lt "$DUCKS" ]; do
+            PORT_I="$(duck_port "$i")" upright_at "$(duck_port "$i")" "$(duck_name "$i")" \
+                || failed=$((failed + 1))
+            i=$((i + 1))
+        done
+        [ "$failed" -eq 0 ] && break
     done
 
     # The radio, reaching each duck through the socket bound out of its container.
