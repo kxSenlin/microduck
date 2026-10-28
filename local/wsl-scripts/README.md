@@ -6,8 +6,8 @@
 
 | 仓库 | 文件 | 内容 |
 |---|---|---|
-| microduck | `scripts/duck-sim` | Debian rootfs 下载改用阿里云镜像；`DUCK_SIM_VIEWER=viser` 时给 `body_server` 传 `--viewer viser --viewer-port 8091` |
-| microduck_rl | `src/mjlab_microduck/sim/body_server.py` | 新增 `--viewer native|viser` 与 `--viewer-port`；viser 模式用 mjviser 把场景同步到浏览器 |
+| microduck | `scripts/duck-sim` | 1) Debian rootfs 下载改用阿里云镜像；2) `DUCK_SIM_VIEWER=viser` 时给 `body_server` 传 `--viewer viser --viewer-port`；3) 启动与结尾打印浏览器地址 |
+| microduck_rl | `src/mjlab_microduck/sim/body_server.py` | 新增 `--viewer native|viser` 与 `--viewer-port`；viser 模式用 mjviser 把场景同步到浏览器，由 Windows GPU 渲染 |
 
 ## 为什么用浏览器渲染
 
@@ -18,23 +18,31 @@ WSLg 下 MuJoCo 原生 GLFW 窗口的渲染由 CPU 端的 Mesa→D3D12 翻译承
 | 公寓（233 geom） | 165 ms/帧，body_server 264% CPU，GPU 5% | 场景同步 2 ms/帧，GPU 由浏览器使用 |
 | 地面（82 geom） | 26 ms/帧 | 同上 |
 
+**已知问题**：4 只鸭子 + 浏览器时，首次场景推流会阻塞身体循环数秒，`boot` 的站立判定可能误报。
+身体循环恢复（`realtime 1.0`）后逐只执行 `robotctl robot enable` 即可站立。
+
 ## 使用流程
 
 ```bash
-# 终端 A：启动鸭子（boot 模式，浏览器查看器）
+# 终端 A：启动（boot 模式，浏览器查看器）
 cd ~/Pollen/microduck
-DUCK_SIM_VIEWER=viser scripts/duck-sim boot 2
+scripts/duck-sim boot 4
 
-# 浏览器打开场景
+# 浏览器
 http://localhost:8091
 
-# 终端 B：打开监控窗口
+# 终端 B：监控
 duck-console
 ```
 
-`duck-console` 不启动、不停止鸭子，只打开 tmux 监控窗口：
-shell / status / 每只鸭子的 robotd 日志 / body 日志 / health。
-鸭子未运行时，`duck-console` 打印上面的启动命令后退出。
+`duck-console` 只监控、不启动不停止。四个窗口：
+
+| 窗口 | 内容 |
+|---|---|
+| shell | 普通 shell，打印浏览器地址 |
+| status | `duck-health`：容器列表 + 每只鸭子健康 |
+| logs | 所有鸭子的 robotd 日志合并（`journalctl -M … -f`） |
+| monitor | duck-a 的实时面板（`robotctl monitor`，走容器绑出的 socket） |
 
 收工：
 
@@ -44,27 +52,17 @@ scripts/duck-sim down
 
 ## 依赖
 
-`mjviser` 需要装在 `microduck_rl/.venv`：
-
 ```bash
 cd ~/Pollen/microduck_rl && uv pip install mjviser
 ```
 
-WSL 环境：
-
-- WSLg + `GALLIUM_DRIVER=d3d12`
-- `systemd-container`、`mmdebstrap`（boot 模式）
-- 免密 sudo（`/etc/sudoers.d/90-wsl-nopasswd`）
+WSL 环境：WSLg + `GALLIUM_DRIVER=d3d12`；`systemd-container`、`mmdebstrap`；免密 sudo；`~/.bashrc` 里 `export DUCK_SIM_VIEWER=viser`。
 
 ## 脚本安装
 
 ```bash
-mkdir -p ~/bin
+mkdir -p ~/bin ~/.local/bin
 cp local/wsl-scripts/duck-console ~/bin/
-chmod 755 ~/bin/duck-console
+cp local/wsl-scripts/duck-health ~/.local/bin/
+chmod 755 ~/bin/duck-console ~/.local/bin/duck-health
 ```
-
-## 说明
-
-- `duck-view`、`duck-hide`、`duck-show` 只对原生 MuJoCo 窗口（`DUCK_SIM_VIEWER=1`）有效；浏览器模式下不需要，本目录不再包含。
-- 单机模式（`scripts/duck-sim` 不带参数）仍可用，但 `duck-console` 只监控 boot 模式。

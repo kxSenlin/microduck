@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# 打印正在运行的容器鸭子的健康摘要，给 duck-console 的 status 窗口用。
+set -uo pipefail
+ducks=$(sudo machinectl list --no-pager --no-legend 2>/dev/null \
+    | awk '{print $1}' | grep -E '^duck-[a-z]$' | sort)
+if [ -z "$ducks" ]; then
+    echo "没有正在运行的容器鸭子"
+    exit 0
+fi
+sudo machinectl list --no-pager
+for m in $ducks; do
+    echo
+    echo "== $m"
+    sudo systemd-run --machine="$m" --pipe --wait --quiet \
+        /usr/local/bin/robotctl health 2>&1 | head -3
+done

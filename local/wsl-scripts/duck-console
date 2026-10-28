@@ -2,10 +2,10 @@
 # duck-console — 监控已经启动的容器鸭子（boot 模式）。
 #
 # 流程：
-#   终端 A：DUCK_SIM_VIEWER=viser scripts/duck-sim boot 2
+#   终端 A：scripts/duck-sim boot 4
 #   终端 B：duck-console
 #
-# 本脚本不启动、不停止鸭子，只负责打开监控窗口。
+# 四个窗口：shell / status（容器 + 健康）/ logs（四只合并）/ monitor（duck-a 实时面板）。
 set -uo pipefail
 REPO="$HOME/Pollen/microduck"
 STATE="$HOME/.cache/duck-sim"
@@ -21,9 +21,9 @@ if [ -z "$ducks" ]; then
     cat <<EOF
 没有正在运行的容器鸭子。
 
-终端 A 启动（示例：2 只）：
+终端 A 启动（示例：4 只）：
   cd $REPO
-  DUCK_SIM_VIEWER=viser scripts/duck-sim boot 2
+  scripts/duck-sim boot 4
 
 浏览器场景查看器：
   $BROWSER_URL
@@ -33,12 +33,16 @@ EOF
     exit 1
 fi
 
+first_duck=$(echo "$ducks" | head -1)
+journal_flags=""
+for duck in $ducks; do
+    journal_flags="$journal_flags -M $duck"
+done
+
 if tmux has-session -t "$SESSION" 2>/dev/null; then
     exec tmux attach -t "$SESSION"
 fi
 
-# 窗口索引必须显式递增：不指定索引时 tmux 会尝试复用当前窗口的下一个编号，
-# 与已存在的窗口冲突后报 "index N in use"，后续窗口全部创建失败。
 tmux new-session -d -s "$SESSION" -n shell -c "$REPO"
 tmux set-option -t "$SESSION" -g mouse on
 tmux set-option -t "$SESSION" -g history-limit 50000
@@ -51,16 +55,9 @@ add_window() {
     WINDOW_INDEX=$((WINDOW_INDEX + 1))
 }
 
-add_window status "watch -n 2 'sudo machinectl list --no-pager'"
-
-for duck in $ducks; do
-    add_window "$duck" "sudo journalctl -M $duck -u robotd -f"
-done
-
-add_window body "tail -f $STATE/body.log"
-
-HEALTH_COMMAND="watch -n 2 'for m in $ducks; do echo == \$m; sudo systemd-run --machine=\$m --pipe --wait --quiet /usr/local/bin/robotctl health 2>&1 | head -4; done'"
-add_window health "$HEALTH_COMMAND"
+add_window status "watch -n 2 duck-health"
+add_window logs "sudo journalctl$journal_flags -u robotd -f"
+add_window monitor "sudo $REPO/target/debug/robotctl --robot-socket $STATE/ducks/$first_duck/run/robotd.sock monitor"
 
 tmux send-keys -t "$SESSION:0" "echo '场景查看器: $BROWSER_URL'" C-m
 tmux select-window -t "$SESSION:0"
