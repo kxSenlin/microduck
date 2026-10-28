@@ -62,7 +62,7 @@ SCENE="${DUCK_SIM_SCENE:-}"
 # rendered frame costs 12 ms against 0.3 ms to step four ducks' physics — one camera is a third of a
 # core and four is most of one. Each duck with a camera also gets a `mediad`, and its console is at
 # 8080 + its index.
-CAMERAS="${DUCK_SIM_CAMERAS:-}"
+CAMERAS="${DUCK_SIM_CAMERAS-all}"   # 每只鸭子一个帧端口；没人看的那路不渲染
 FRAME_PORT="${DUCK_SIM_FRAME_PORT:-7901}"
 SOCK="$STATE/duck.sock"
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
@@ -592,7 +592,7 @@ PY
   wall-clock: if MuJoCo runs at half speed the policy is effectively driving a robot that moves half
   as fast as it expects, and it cannot balance one. The viewer is the usual cause.
 
-    scripts/duck-sim down && DUCK_SIM_VIEWER=0 scripts/duck-sim
+Try DUCK_SIM_VIEWER=0, or fewer ducks.
 WHY
     else
         cat <<'WHY'
@@ -627,7 +627,7 @@ start_body() {
     [ -d "$RL" ] || die "no simulator at $RL. It is the microduck_rl repo — set DUCK_SIM_RL."
     [ -x "$RL/.venv/bin/python" ] || die "$RL has no .venv. Run \`uv sync\` there first."
     mkdir -p "$STATE"
-    case "${DUCK_SIM_VIEWER:-1}" in
+    case "${DUCK_SIM_VIEWER:-viser}" in
         0)     say "starting the body from $RL — headless" ;;
         viser) say "starting the body from $RL — the scene opens in a browser" ;;
         *)     say "starting the body from $RL — a MuJoCo window should open" ;;
@@ -636,7 +636,7 @@ start_body() {
     # wall-clock, so a simulator that cannot keep up is a robot that cannot balance.
     HEADLESS=""
     VIEWER_ARG=""
-    case "${DUCK_SIM_VIEWER:-1}" in
+    case "${DUCK_SIM_VIEWER:-viser}" in
         0)     HEADLESS=--headless ;;
         viser) VIEWER_ARG="--viewer viser --viewer-port ${DUCK_SIM_VIEWER_PORT:-8091}" ;;
     esac
@@ -673,7 +673,7 @@ start_body() {
     # decline.
     cam_args=""
     if [ -n "$CAMERAS" ]; then
-        cam_args="--cameras $CAMERAS --frame-port $FRAME_PORT --camera-fps ${DUCK_SIM_CAMERA_FPS:-15}"
+        cam_args="--cameras $CAMERAS --frame-port $FRAME_PORT --camera-fps ${DUCK_SIM_CAMERA_FPS:-30}"
     fi
     # shellcheck disable=SC2086
     $SETSID nohup "$PY_BIN" -m mjlab_microduck.sim.body_server \
@@ -707,7 +707,7 @@ WHY
 
 # 浏览器查看器模式下把地址打到终端，终端会把 URL 变成可点击链接。
 viewer_hint() {
-    [ "${DUCK_SIM_VIEWER:-1}" = viser ] && \
+    [ "${DUCK_SIM_VIEWER:-viser}" = viser ] && \
         say "the scene is at http://localhost:${DUCK_SIM_VIEWER_PORT:-8091} — open it in a browser"
     return 0
 }
