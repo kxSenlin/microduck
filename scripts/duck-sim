@@ -628,7 +628,12 @@ start_body() {
     say "starting the body from $RL — a MuJoCo window should open"
     # `DUCK_SIM_VIEWER=0` for a window-less run: watching costs frames, and the daemon's loop is
     # wall-clock, so a simulator that cannot keep up is a robot that cannot balance.
-    [ "${DUCK_SIM_VIEWER:-1}" = 0 ] && HEADLESS=--headless || HEADLESS=
+    HEADLESS=""
+    VIEWER_ARG=""
+    case "${DUCK_SIM_VIEWER:-1}" in
+        0)     HEADLESS=--headless ;;
+        viser) VIEWER_ARG="--viewer viser --viewer-port ${DUCK_SIM_VIEWER_PORT:-8091}" ;;
+    esac
     # **The viewer needs `mjpython` on macOS.** MuJoCo's passive viewer has to own the main thread
     # and the Cocoa event loop, so `launch_passive` refuses under a plain interpreter — the body
     # server catches that and runs headless, which is a window that never opens and no error to
@@ -666,7 +671,7 @@ start_body() {
     fi
     # shellcheck disable=SC2086
     $SETSID nohup "$PY_BIN" -m mjlab_microduck.sim.body_server \
-        --port "$PORT" --ducks "$DUCKS" --keyframe "${DUCK_SIM_KEYFRAME:-SIT}" $HEADLESS $scene_arg \
+        --port "$PORT" --ducks "$DUCKS" --keyframe "${DUCK_SIM_KEYFRAME:-SIT}" $HEADLESS $VIEWER_ARG $scene_arg \
         $cam_args \
         > "$STATE/body.log" 2>&1 &
     echo $! > "$STATE/body.pid"
@@ -820,10 +825,10 @@ rootfs() {
     mkdir -p "$STATE/keyring"
     if [ ! -f "$STATE/keyring/usr/share/keyrings/debian-archive-keyring.gpg" ]; then
         say "fetching Debian's archive keyring (this host is not Debian)"
-        deb="$(curl -s http://deb.debian.org/debian/pool/main/d/debian-archive-keyring/ \
+        deb="$(curl -s http://mirrors.aliyun.com/debian/pool/main/d/debian-archive-keyring/ \
             | grep -o 'debian-archive-keyring_[0-9.]*_all\.deb' | sort -u | tail -1)"
         [ -n "$deb" ] || die "could not find the keyring package on deb.debian.org"
-        curl -sSL -o "$STATE/keyring.deb" "http://deb.debian.org/debian/pool/main/d/debian-archive-keyring/$deb"
+        curl -sSL -o "$STATE/keyring.deb" "http://mirrors.aliyun.com/debian/pool/main/d/debian-archive-keyring/$deb"
         dpkg-deb -x "$STATE/keyring.deb" "$STATE/keyring"
     fi
     # The keyring has to be readable by the uid apt drops to *inside* the user namespace, and a
@@ -846,7 +851,7 @@ rootfs() {
         --aptopt='APT::Sandbox::User "root"' \
         --include="$PACKAGES" \
         --format=tar \
-        trixie "$STATE/rootfs.tar" http://deb.debian.org/debian
+        trixie "$STATE/rootfs.tar" http://mirrors.aliyun.com/debian
     say "unpacking it (sudo, for the ownership)"
     sudo mkdir -p "$ROOTFS"
     sudo tar -xpf "$STATE/rootfs.tar" -C "$ROOTFS"

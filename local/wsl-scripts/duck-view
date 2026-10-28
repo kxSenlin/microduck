@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# Put the MuJoCo window where you can actually see it, at a size the remote desktop can stream.
+#   duck-view            -> 1100x650 at (80,80)
+#   duck-view 800 480    -> smaller, smoother
+set -uo pipefail
+export DISPLAY=${DISPLAY:-:0}
+W=${1:-1100}
+H=${2:-650}
+WID=$(xdotool search --name "MuJoCo" 2>/dev/null | head -1)
+if [ -z "$WID" ]; then
+    echo "no MuJoCo window — is the duck up? (duck-status / duck-up)"
+    exit 1
+fi
+xdotool windowsize "$WID" "$W" "$H" 2>/dev/null || true
+xdotool windowmove "$WID" 80 80 2>/dev/null || true
+xdotool windowactivate "$WID" 2>/dev/null || true
+xdotool windowraise "$WID" 2>/dev/null || true
+sleep 0.3
+echo "MuJoCo window -> ${W}x${H} at (80,80), raised"
+xwininfo -id "$WID" 2>/dev/null | grep -E "Absolute|Width|Height|Map State"

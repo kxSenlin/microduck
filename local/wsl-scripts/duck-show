@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# duck-show — 把隐藏/最小化的 MuJoCo 窗口叫回来
+set -uo pipefail
+export DISPLAY=${DISPLAY:-:0}
+WID=$(xdotool search --name "MuJoCo" 2>/dev/null | head -1)
+if [ -z "$WID" ]; then
+    echo "no MuJoCo window — the body is not running (duck-console to start it)"
+    exit 1
+fi
+xdotool windowmap "$WID"
+xdotool windowactivate "$WID" 2>/dev/null || true
+xdotool windowraise "$WID" 2>/dev/null || true
+echo "MuJoCo window shown (id $WID)"
