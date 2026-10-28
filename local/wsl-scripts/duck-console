@@ -38,8 +38,24 @@ for duck in $ducks; do
     journal_flags="$journal_flags -M $duck"
 done
 
+expected=""
+for duck in $ducks; do
+    expected="$expected monitor-${duck#duck-}"
+done
+
 if tmux has-session -t "$SESSION" 2>/dev/null; then
-    exec tmux attach -t "$SESSION"
+    current=""
+    for name in $(tmux list-windows -t "$SESSION" -F '#{window_name}' 2>/dev/null); do
+        case "$name" in
+            monitor-*) current="$current $name" ;;
+        esac
+    done
+    # 窗口集合与当前鸭子不一致（上次跑的是别的数量）→ 拆掉重建
+    if [ "$current" != "$expected" ]; then
+        tmux kill-session -t "$SESSION" 2>/dev/null || true
+    else
+        exec tmux attach -t "$SESSION"
+    fi
 fi
 
 tmux new-session -d -s "$SESSION" -n shell -c "$REPO"
@@ -60,7 +76,7 @@ add_window logs "sudo journalctl$journal_flags -u robotd -f"
 # 每只鸭子一个实时面板
 for duck in $ducks; do
     letter=${duck#duck-}
-    add_window "monitor-$letter" "sudo $REPO/target/debug/robotctl --robot-socket $STATE/ducks/$duck/run/robotd.sock monitor"
+    add_window "monitor-$letter" "while :; do sudo $REPO/target/debug/robotctl --robot-socket $STATE/ducks/$duck/run/robotd.sock monitor; echo 'monitor exited — reconnecting in 2s'; sleep 2; done"
 done
 
 tmux send-keys -t "$SESSION:0" "echo '场景查看器: $BROWSER_URL'" C-m
