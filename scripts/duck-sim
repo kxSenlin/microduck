@@ -517,6 +517,8 @@ WHY
         i=$((i + 1))
     done
 
+    viewer_hint
+
     cat <<'NEXT'
 
   Your duck is up. From here:
@@ -625,7 +627,11 @@ start_body() {
     [ -d "$RL" ] || die "no simulator at $RL. It is the microduck_rl repo — set DUCK_SIM_RL."
     [ -x "$RL/.venv/bin/python" ] || die "$RL has no .venv. Run \`uv sync\` there first."
     mkdir -p "$STATE"
-    say "starting the body from $RL — a MuJoCo window should open"
+    case "${DUCK_SIM_VIEWER:-1}" in
+        0)     say "starting the body from $RL — headless" ;;
+        viser) say "starting the body from $RL — the scene opens in a browser" ;;
+        *)     say "starting the body from $RL — a MuJoCo window should open" ;;
+    esac
     # `DUCK_SIM_VIEWER=0` for a window-less run: watching costs frames, and the daemon's loop is
     # wall-clock, so a simulator that cannot keep up is a robot that cannot balance.
     HEADLESS=""
@@ -695,6 +701,15 @@ WHY
         fi
         die "the simulator did not come up. $STATE/body.log has why."
     fi
+
+    viewer_hint
+}
+
+# 浏览器查看器模式下把地址打到终端，终端会把 URL 变成可点击链接。
+viewer_hint() {
+    [ "${DUCK_SIM_VIEWER:-1}" = viser ] && \
+        say "the scene is at http://localhost:${DUCK_SIM_VIEWER_PORT:-8091} — open it in a browser"
+    return 0
 }
 
 wait_for_port() {
@@ -1090,6 +1105,7 @@ CONF
     fi
 
     realtime
+    viewer_hint
 
     cat <<NEXT
 
