@@ -1,68 +1,67 @@
 #!/usr/bin/env bash
-# duck-console — 起鸭子 + 打开监控 tab。
-#   duck-console            单机模式（scripts/duck-sim）
-#   duck-console boot 2     容器模式（scripts/duck-sim boot 2）
-#   duck-console 4          同上（数字即容器数）
-# 启动命令会"敲"进 shell tab，屏幕上可见；attach 立即发生，监控 tab 在后台等健康后创建。
+# duck-console — 监控已经启动的容器鸭子（boot 模式）。
+#
+# 流程：
+#   终端 A：DUCK_SIM_VIEWER=viser scripts/duck-sim boot 2
+#   终端 B：duck-console
+#
+# 本脚本不启动、不停止鸭子，只负责打开监控窗口。
 set -uo pipefail
-export GALLIUM_DRIVER=${GALLIUM_DRIVER:-d3d12}
 REPO="$HOME/Pollen/microduck"
+STATE="$HOME/.cache/duck-sim"
 SESSION=duck
+BROWSER_URL="http://localhost:${DUCK_SIM_VIEWER_PORT:-8091}"
+
 cd "$REPO" || exit 1
 
-# 已存在会话：直接附上，不重启鸭子
+ducks=$(sudo machinectl list --no-pager --no-legend 2>/dev/null \
+    | awk '{print $1}' | grep -E '^duck-[a-z]$' | sort)
+
+if [ -z "$ducks" ]; then
+    cat <<EOF
+没有正在运行的容器鸭子。
+
+终端 A 启动（示例：2 只）：
+  cd $REPO
+  DUCK_SIM_VIEWER=viser scripts/duck-sim boot 2
+
+浏览器场景查看器：
+  $BROWSER_URL
+
+启动完成后，在终端 B 重新运行：duck-console
+EOF
+    exit 1
+fi
+
 if tmux has-session -t "$SESSION" 2>/dev/null; then
     exec tmux attach -t "$SESSION"
 fi
 
-# 解析模式
-MODE=single
-N=1
-case "${1:-}" in
-    boot)    MODE=boot; N="${2:-1}" ;;
-    ''|*[!0-9]*) MODE=single ;;
-    *)       MODE=boot; N="$1" ;;
-esac
-
-# 建会话：先只有 shell tab，马上 attach
+# 窗口索引必须显式递增：不指定索引时 tmux 会尝试复用当前窗口的下一个编号，
+# 与已存在的窗口冲突后报 "index N in use"，后续窗口全部创建失败。
 tmux new-session -d -s "$SESSION" -n shell -c "$REPO"
 tmux set-option -t "$SESSION" -g mouse on
 tmux set-option -t "$SESSION" -g history-limit 50000
 
-if scripts/duck-sim status 2>/dev/null | grep -q healthy; then
-    tmux send-keys -t "$SESSION:shell" 'scripts/duck-sim status' C-m
-else
-    if [ "$MODE" = boot ]; then
-        tmux send-keys -t "$SESSION:shell" "scripts/duck-sim boot $N" C-m
-    else
-        tmux send-keys -t "$SESSION:shell" 'scripts/duck-sim' C-m
-    fi
+WINDOW_INDEX=1
+add_window() {
+    local name="$1" command="$2"
+    tmux new-window -d -t "$SESSION:$WINDOW_INDEX" -n "$name" -c "$REPO" || return 1
+    tmux send-keys -t "$SESSION:$WINDOW_INDEX" "$command" C-m
+    WINDOW_INDEX=$((WINDOW_INDEX + 1))
+}
 
-    # 后台等健康，然后创建监控 tab（-d：不抢当前焦点）
-    (
-        for _ in $(seq 1 180); do
-            scripts/duck-sim status 2>/dev/null | grep -q healthy && break
-            sleep 1
-        done
-        sleep 2
-        tmux new-window -d -t "$SESSION" -n status  -c "$REPO" "watch -n 2 'scripts/duck-sim status'"
-        tmux new-window -d -t "$SESSION" -n log     -c "$REPO" "scripts/duck-sim log"
-        tmux new-window -d -t "$SESSION" -n simlog  -c "$REPO" "scripts/duck-sim simlog"
-        tmux new-window -d -t "$SESSION" -n monitor -c "$REPO" "scripts/duck-sim monitor"
-        if [ "$MODE" = boot ] && [ "$N" -gt 1 ]; then
-            letters=abcdefghij
-            names=""
-            i=0
-            while [ "$i" -lt "$N" ]; do
-                names="$names duck-${letters:$i:1}"
-                i=$((i + 1))
-            done
-            tmux new-window -d -t "$SESSION" -n ducks -c "$REPO" \
-                "watch -n 2 'for d in$names; do echo \"== \$d\"; WHO=\$d scripts/duck-sim ctl health 2>&1 | head -2; done'"
-        fi
-    ) >/tmp/duck-console-tabs.log 2>&1 &
-    disown 2>/dev/null || true
-fi
+add_window status "watch -n 2 'sudo machinectl list --no-pager'"
 
-tmux select-window -t "$SESSION:shell"
+for duck in $ducks; do
+    add_window "$duck" "sudo journalctl -M $duck -u robotd -f"
+done
+
+add_window body "tail -f $STATE/body.log"
+
+HEALTH_COMMAND="watch -n 2 'for m in $ducks; do echo == \$m; sudo systemd-run --machine=\$m --pipe --wait --quiet /usr/local/bin/robotctl health 2>&1 | head -4; done'"
+add_window health "$HEALTH_COMMAND"
+
+tmux send-keys -t "$SESSION:0" "echo '场景查看器: $BROWSER_URL'" C-m
+tmux select-window -t "$SESSION:0"
 exec tmux attach -t "$SESSION"
