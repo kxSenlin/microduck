@@ -5,7 +5,7 @@
 #   终端 A：scripts/duck-sim boot 4
 #   终端 B：duck-console
 #
-# 四个窗口：shell / status（容器 + 健康）/ logs（四只合并）/ monitor（duck-a 实时面板）。
+# 窗口：shell / status（容器 + 健康）/ logs（所有鸭子合并）/ monitor-<字母>（每只一个实时面板）。
 set -uo pipefail
 REPO="$HOME/Pollen/microduck"
 STATE="$HOME/.cache/duck-sim"
@@ -33,7 +33,6 @@ EOF
     exit 1
 fi
 
-first_duck=$(echo "$ducks" | head -1)
 journal_flags=""
 for duck in $ducks; do
     journal_flags="$journal_flags -M $duck"
@@ -57,7 +56,12 @@ add_window() {
 
 add_window status "watch -n 2 duck-health"
 add_window logs "sudo journalctl$journal_flags -u robotd -f"
-add_window monitor "sudo $REPO/target/debug/robotctl --robot-socket $STATE/ducks/$first_duck/run/robotd.sock monitor"
+
+# 每只鸭子一个实时面板
+for duck in $ducks; do
+    letter=${duck#duck-}
+    add_window "monitor-$letter" "sudo $REPO/target/debug/robotctl --robot-socket $STATE/ducks/$duck/run/robotd.sock monitor"
+done
 
 tmux send-keys -t "$SESSION:0" "echo '场景查看器: $BROWSER_URL'" C-m
 tmux select-window -t "$SESSION:0"

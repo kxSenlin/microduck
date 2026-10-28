@@ -35,14 +35,14 @@ http://localhost:8091
 duck-console
 ```
 
-`duck-console` 只监控、不启动不停止。四个窗口：
+`duck-console` 只监控、不启动不停止。窗口：
 
 | 窗口 | 内容 |
 |---|---|
 | shell | 普通 shell，打印浏览器地址 |
 | status | `duck-health`：容器列表 + 每只鸭子健康 |
 | logs | 所有鸭子的 robotd 日志合并（`journalctl -M … -f`） |
-| monitor | duck-a 的实时面板（`robotctl monitor`，走容器绑出的 socket） |
+| monitor-a … | 每只鸭子一个实时面板（`robotctl monitor`，走各自容器绑出的 socket） |
 
 收工：
 
