@@ -673,7 +673,7 @@ start_body() {
     # decline.
     cam_args=""
     if [ -n "$CAMERAS" ]; then
-        cam_args="--cameras $CAMERAS --frame-port $FRAME_PORT --camera-fps 30"
+        cam_args="--cameras $CAMERAS --frame-port $FRAME_PORT --camera-fps ${DUCK_SIM_CAMERA_FPS:-15}"
     fi
     # shellcheck disable=SC2086
     $SETSID nohup "$PY_BIN" -m mjlab_microduck.sim.body_server \
