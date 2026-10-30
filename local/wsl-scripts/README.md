@@ -1,3 +1,6 @@
+> 完整的换机/环境复现说明（系统依赖、bashrc 托管块、PATH、环境变量、与上游同步）见仓库根目录
+> [LOCAL-SETUP.md](../../LOCAL-SETUP.md)。
+
 # WSL 本地补丁与脚本
 
 不属于官方仓库，是 kxSenlin 在 WSL 上使用 Microduck 的本地补丁与辅助脚本。
