@@ -979,10 +979,17 @@ stage() {
         cp "$REPO"/robotd/systemd/robotd.service "$ROOTFS/etc/systemd/system/"
         cp "$REPO"/tof/systemd/tofd.service "$ROOTFS/etc/systemd/system/" 2>/dev/null || true
         install -m755 "$REPO/target/debug/tofd" "$REL/bin/" 2>/dev/null || true
+        # autod/mapd: the autonomous brain and the onboard map. The upstream sim leaves them
+        # out; staging them lets autonomy be switched on in the container and watched here.
+        install -m755 "$REPO/target/debug/autod" "$REPO/target/debug/mapd" "$REL/bin/" 2>/dev/null || true
+        cp "$REPO"/autod/systemd/autod.service "$ROOTFS/etc/systemd/system/" 2>/dev/null || true
+        cp "$REPO"/mapd/systemd/mapd.service "$ROOTFS/etc/systemd/system/" 2>/dev/null || true
         mkdir -p "$ROOTFS/usr/lib/sysusers.d"
         cp "$REPO"/btd/systemd/sysusers.d/btd.conf "$ROOTFS/usr/lib/sysusers.d/" 2>/dev/null || true
         cp "$REPO"/mediad/systemd/sysusers.d/mediad.conf "$ROOTFS/usr/lib/sysusers.d/" 2>/dev/null || true
         cp "$REPO"/padd/systemd/sysusers.d/padd.conf "$ROOTFS/usr/lib/sysusers.d/" 2>/dev/null || true
+        cp "$REPO"/autod/systemd/sysusers.d/autod.conf "$ROOTFS/usr/lib/sysusers.d/" 2>/dev/null || true
+        cp "$REPO"/mapd/systemd/sysusers.d/mapd.conf "$ROOTFS/usr/lib/sysusers.d/" 2>/dev/null || true
         cp "$REPO"/tof/systemd/sysusers.d/tofd.conf "$ROOTFS/usr/lib/sysusers.d/" 2>/dev/null || true
         cp "$REPO"/updater/systemd/sysusers.d/robot.conf "$ROOTFS/usr/lib/sysusers.d/" 2>/dev/null || true
         printf "g i2c -\n" > "$ROOTFS/usr/lib/sysusers.d/duck-sim-groups.conf"
@@ -997,7 +1004,7 @@ stage() {
         # release postinstall runs this directly for the same reason.
         chroot "$ROOTFS" /usr/bin/systemd-sysusers >/dev/null 2>&1 || true
         # Verified here rather than discovered three layers down.
-        for who in tofd robot mediad btd padd; do
+        for who in tofd robot mediad btd padd autod mapd; do
             grep -q "^$who:" "$ROOTFS/etc/passwd" "$ROOTFS/etc/group" 2>/dev/null \
                 || echo "  WARNING: no $who user or group — the unit that needs it will not start"
         done
@@ -1009,7 +1016,7 @@ stage() {
         rm -f "$ROOTFS/etc/robot/robotd.toml"
         printf "root:x:0:\n" >/dev/null
         chroot "$ROOTFS" /usr/bin/passwd -d root >/dev/null 2>&1 || true
-        chroot "$ROOTFS" /usr/bin/systemctl enable robotd.service tofd.service >/dev/null 2>&1 || true
+        chroot "$ROOTFS" /usr/bin/systemctl enable robotd.service tofd.service autod.service mapd.service >/dev/null 2>&1 || true
     ' _ "$ROOTFS" "$REPO" "$ORT" "$PORT"
 }
 
